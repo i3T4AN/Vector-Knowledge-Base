@@ -1,0 +1,269 @@
+/* =====================================================================
+   i3T4AN (Ethan Blair)
+   Project:      Vector Knowledge Base
+   File:         File System UI (Split-View, Drag & Drop, Breadcrumbs)
+   ===================================================================== */
+
+/* Split-View Layout */
+.filesystem-layout {
+    display: flex;
+    gap: 2rem;
+    min-height: 600px;
+}
+
+/* Unsorted Files Sidebar */
+.unsorted-sidebar {
+    width: 250px;
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, .03);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border);
+    border-radius: 1.5rem;
+    padding: 1.5rem;
+    box-shadow: var(--shadow);
+}
+
+.unsorted-sidebar h3 {
+    color: var(--text-primary);
+    font-size: 1rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.unsorted-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+/* Unsorted File Item */
+.unsorted-file-item {
+    padding: 0.75rem 1rem;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    cursor: grab;
+    transition: var(--transition);
+    word-wrap: break-word;
+}
+
+.unsorted-file-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--accent);
+    color: var(--text-primary);
+    transform: translateX(4px);
+}
+
+.unsorted-file-item:active {
+    cursor: grabbing;
+}
+
+/* Main Filesystem View */
+.filesystem-main {
+    flex: 1;
+    background: rgba(255, 255, 255, .02);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border);
+    border-radius: 1.5rem;
+    padding: 2rem;
+    box-shadow: var(--shadow);
+}
+
+/* Toolbar */
+.filesystem-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+/* Breadcrumbs */
+.breadcrumbs {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.breadcrumbs a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.95rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    transition: var(--transition);
+}
+
+.breadcrumbs a:hover {
+    color: var(--accent);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.breadcrumbs a:not(:last-child)::after {
+    content: '';
+    margin-left: 0.5rem;
+    color: var(--text-muted);
+}
+
+/* Folder Grid */
+.folder-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 1.5rem;
+    min-height: 300px;
+}
+
+/* Folder/File Card */
+.fs-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem 1rem;
+    background: rgba(255, 255, 255, .03);
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    cursor: pointer;
+    transition: var(--transition);
+    text-align: center;
+    position: relative;
+}
+
+.fs-item:hover {
+    background: rgba(255, 255, 255, .08);
+    border-color: var(--border-hover);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+}
+
+.fs-item-name {
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+}
+
+/* Drag & Drop Styles */
+.fs-item.drop-target {
+    border: 2px dashed var(--accent);
+    background: rgba(129, 140, 248, .1);
+}
+
+.active-drop-zone {
+    border: 2px dashed var(--accent) !important;
+    background: rgba(129, 140, 248, .05) !important;
+    border-radius: 1rem;
+}
+
+.dragging {
+    opacity: 0.5;
+}
+
+/* Empty State */
+.empty-folder {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text-muted);
+}
+
+.empty-folder p {
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+}
+
+.empty-folder small {
+    font-size: 0.9rem;
+}
+
+/* Delete Folder Button */
+.delete-folder-btn {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--error-color);
+    color: white;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: var(--transition);
+    font-size: 1.2rem;
+    line-height: 1;
+    z-index: 10;
+    box-shadow: var(--shadow-sm);
+}
+
+.fs-item:hover .delete-folder-btn {
+    opacity: 1;
+}
+
+.delete-folder-btn:hover {
+    transform: scale(1.1);
+    background: #ef4444;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .filesystem-layout {
+        flex-direction: column;
+    }
+
+    .unsorted-sidebar {
+        width: 100%;
+        order: 2;
+        max-height: 300px;
+    }
+
+    .filesystem-main {
+        order: 1;
+    }
+
+    .folder-grid {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 1rem;
+    }
+
+    .filesystem-toolbar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+}
+
+/* Scrollbar Styling */
+.unsorted-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.unsorted-list::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 10px;
+}
+
+.unsorted-list::-webkit-scrollbar-thumb {
+    background: var(--accent-light);
+    border-radius: 10px;
+}
+
+.unsorted-list::-webkit-scrollbar-thumb:hover {
+    background: var(--accent);
+}
