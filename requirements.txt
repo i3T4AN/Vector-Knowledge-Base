@@ -1,7 +1,10 @@
-fastapi
-uvicorn
-sentence-transformers
-qdrant-client
-pypdf
-docx2txt
-python-multipart
+fastapi==0.122.0
+uvicorn==0.38.0
+sentence-transformers==5.1.2
+qdrant-client==1.7.3
+pypdf==6.4.0
+docx2txt==0.9
+python-multipart==0.0.20
+scikit-learn==1.6.1
+pydantic-settings==2.11.0
+hdbscan>=0.8.33
