@@ -10,9 +10,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vector Database Search</title>
-    <link rel="stylesheet" href="styles.css">
+    <!-- Modular CSS - Load in order -->
+    <link rel="stylesheet" href="/css/base.css">
+    <link rel="stylesheet" href="/css/animations.css">
+    <link rel="stylesheet" href="/css/components.css">
+    <link rel="stylesheet" href="/css/layout.css">
+    <link rel="stylesheet" href="/css/filesystem.css">
+    <link rel="stylesheet" href="/css/modals.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Fira+Code&display=swap"
         rel="stylesheet">
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
 </head>
 
 <body>
@@ -23,14 +37,14 @@
         </header>
 
         <div class="tabs">
-            <button class="tab-btn active" data-tab="searchTab">Search</button>
-            <button class="tab-btn" data-tab="docsTab">My Documents</button>
-            <button class="tab-btn" data-tab="filesTab">Files</button>
+            <a href="index.html" class="tab-btn active">Search</a>
+            <a href="documents.html" class="tab-btn">My Documents</a>
+            <a href="files.html" class="tab-btn">Files</a>
         </div>
 
         <main>
-            <!-- Search Tab Content -->
-            <div id="searchTab" class="tab-content active">
+            <!-- Search Content -->
+            <div id="searchTab">
 
                 <div class="search-container">
 
@@ -46,14 +60,9 @@
 
                     <div class="filters">
                         <div class="filter-group">
-                            <label for="extFilter">File Type</label>
-                            <select id="extFilter">
-                                <option value="">All Types</option>
-                                <option value="pdf">PDF</option>
-                                <option value="docx">DOCX</option>
-                                <option value="txt">TXT</option>
-                                <option value="md">Markdown</option>
-                                <option value="py">Python</option>
+                            <label for="cluster-filter">Cluster</label>
+                            <select id="cluster-filter">
+                                <option value="all">All Clusters</option>
                             </select>
                         </div>
                         <div class="filter-group">
@@ -74,6 +83,17 @@
                     </div>
                 </div>
 
+                <!-- Visualizer Container -->
+                <div id="visualizer-container"
+                    style="width: 100%; height: 400px; margin-bottom: 20px; display: none; position: relative;">
+                    <div id="visualizer-tooltip" class="visualizer-tooltip" style="display: none;"></div>
+                </div>
+                <button id="toggleVisualizerBtn" class="btn btn-secondary" style="margin-bottom: 20px;">Show 3D
+                    Embedding Space</button>
+                <button id="clusterBtn" class="btn btn-secondary"
+                    style="margin-bottom: 20px; margin-left: 10px;">Auto-Cluster
+                    Documents</button>
+
                 <div id="loading" class="loading">
                     <div class="spinner"></div>
                     <p>Searching knowledge base...</p>
@@ -88,127 +108,46 @@
                     </div>
                 </div>
             </div>
-
-            <!-- Documents Tab Content -->
-            <div id="docsTab" class="tab-content">
-                <!-- Upload Section -->
-                <div class="upload-section">
-                    <h2 style="margin-bottom: 1.5rem; color: var(--text-primary);">Upload Documents</h2>
-                    <div id="dropZone" class="drop-zone">
-                        <p>Drag & Drop files here or <span class="browse-btn">Browse</span></p>
-                        <input type="file" id="fileInput" hidden>
-                    </div>
-                    <div class="upload-controls">
-                        <input type="text" id="courseName" placeholder="Description" required>
-                        <input type="text" id="uploadTags" placeholder="Tags (comma separated)">
-                        <button id="uploadBtn" class="btn btn-primary">Upload</button>
-                    </div>
-                    <div id="uploadProgress" class="progress-bar">
-                        <div class="progress-fill"></div>
-                    </div>
-                    <div id="uploadStatus" class="status-msg"></div>
-                </div>
-
-                <div class="stats-bar">
-                    <div class="stat-card">
-                        <h3>Total Documents</h3>
-                        <p id="totalDocs">0</p>
-                    </div>
-                    <div class="stat-card">
-                        <h3>Total Chunks</h3>
-                        <p id="totalChunks">0</p>
-                    </div>
-                </div>
-
-                <div class="docs-controls">
-                    <button id="refreshDocsBtn" class="btn btn-secondary">Refresh List</button>
-                </div>
-
-                <div class="table-container">
-                    <table id="docsTable">
-                        <thead>
-                            <tr>
-                                <th>Filename</th>
-                                <th>Description</th>
-                                <th>Tags</th>
-                                <th>Date</th>
-                                <th>Chunks</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- Docs injected here -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Files Tab Content -->
-            <div id="filesTab" class="tab-content">
-                <div class="filesystem-layout">
-                    <!-- Sidebar: Unsorted Files -->
-                    <aside class="unsorted-sidebar">
-                        <h3>📦 Unsorted Files</h3>
-                        <div id="unsortedFilesList" class="unsorted-list">
-                            <!-- Unsorted files will be injected here -->
-                        </div>
-                    </aside>
-
-                    <!-- Main View: Folders and Files -->
-                    <div class="filesystem-main">
-                        <div class="filesystem-toolbar">
-                            <nav class="breadcrumbs" id="breadcrumbs">
-                                <a href="#" data-folder-id="null">🏠 Home</a>
-                            </nav>
-                            <button id="newFolderBtn" class="btn btn-secondary"
-                                onclick="window.fileSystem.openCreateFolderModal()">+ New Folder</button>
-                        </div>
-                        <div id="folderGrid" class="folder-grid">
-                            <!-- Folders and files will be injected here -->
-                        </div>
-                    </div>
-                </div>
-            </div>
         </main>
     </div>
 
-    <!-- Create Folder Modal -->
-    <div id="createFolderModal" class="modal-overlay" style="display: none;">
-        <div class="modal">
-            <div class="modal-header">
-                <h3>Create New Folder</h3>
-                <button class="modal-close" onclick="window.fileSystem.closeCreateFolderModal()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <input type="text" id="newFolderNameInput" placeholder="Enter folder name" class="modal-input">
-            </div>
-            <div class="modal-actions">
-                <button class="btn btn-secondary" onclick="window.fileSystem.closeCreateFolderModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="window.fileSystem.confirmCreateFolder()">Create</button>
-            </div>
-        </div>
-    </div>
+    <script src="config.js?v=4"></script>
+    <script src="notifications.js?v=4"></script>
+    <script src="search.js?v=4"></script>
+    <script type="module">
+        import { EmbeddingVisualizer } from './js/embedding-visualizer.js';
 
-    <script src="config.js?v=2"></script>
-    <script src="notifications.js?v=2"></script>
-    <script src="search.js?v=2"></script>
-    <script src="upload.js?v=2"></script>
-    <script src="documents.js?v=2"></script>
-    <script src="filesystem.js?v=2"></script>
-    <script>
-        // Simple Tab Logic
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                btn.classList.add('active');
-                document.getElementById(btn.dataset.tab).classList.add('active');
+        document.addEventListener('DOMContentLoaded', () => {
+            const container = document.getElementById('visualizer-container');
+            const toggleBtn = document.getElementById('toggleVisualizerBtn');
 
-                // Initialize filesystem when Files tab is clicked
-                if (btn.dataset.tab === 'filesTab' && window.fileSystem) {
-                    window.fileSystem.refresh();
-                }
-            });
+            if (container && toggleBtn) {
+                // Initialize visualizer
+                // Note: API_BASE_URL is global from config.js
+                const visualizer = new EmbeddingVisualizer(container, {
+                    baseUrl: typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : 'http://127.0.0.1:8000'
+                });
+
+                // Expose to window for search.js to use
+                window.embeddingVisualizer = visualizer;
+
+                // Initial fetch
+                visualizer.fetchAllEmbeddings3D().then(() => {
+                    visualizer.renderCorpusPoints();
+                });
+
+                toggleBtn.addEventListener('click', () => {
+                    if (container.style.display === 'none') {
+                        container.style.display = 'block';
+                        toggleBtn.textContent = 'Hide 3D Embedding Space';
+                        // Give browser a moment to render div then resize
+                        setTimeout(() => visualizer.onWindowResize(), 10);
+                    } else {
+                        container.style.display = 'none';
+                        toggleBtn.textContent = 'Show 3D Embedding Space';
+                    }
+                });
+            }
         });
     </script>
 </body>
