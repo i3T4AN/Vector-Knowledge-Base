@@ -1,0 +1,103 @@
+<!-- =====================================================================
+     i3T4AN (Ethan Blair)
+     Project:      Vector Knowledge Base
+     File:         File System Page
+     ===================================================================== -->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Files - Vector Knowledge Base</title>
+    <!-- Modular CSS - Load in order -->
+    <link rel="stylesheet" href="/css/base.css">
+    <link rel="stylesheet" href="/css/animations.css">
+    <link rel="stylesheet" href="/css/components.css">
+    <link rel="stylesheet" href="/css/layout.css">
+    <link rel="stylesheet" href="/css/filesystem.css">
+    <link rel="stylesheet" href="/css/modals.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Fira+Code&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Vector Knowledge Base</h1>
+            <p class="subtitle">Semantic search across your uploaded documents</p>
+        </header>
+
+        <div class="tabs">
+            <a href="index.html" class="tab-btn">Search</a>
+            <a href="documents.html" class="tab-btn">My Documents</a>
+            <a href="files.html" class="tab-btn active">Files</a>
+        </div>
+
+        <main>
+            <!-- Files Content -->
+            <div id="filesTab">
+                <div class="filesystem-layout">
+                    <!-- Sidebar: Unsorted Files -->
+                    <aside class="unsorted-sidebar">
+                        <h3><span class="purple-emoji">📦</span> Unsorted Files</h3>
+                        <div id="unsortedFilesList" class="unsorted-list">
+                            <!-- Unsorted files will be injected here -->
+                        </div>
+                    </aside>
+
+                    <!-- Main View: Folders and Files -->
+                    <div class="filesystem-main">
+                        <div class="filesystem-toolbar">
+                            <nav class="breadcrumbs" id="breadcrumbs">
+                                <a href="#" data-folder-id="null"><span class="purple-emoji">🏠</span> Home</a>
+                            </nav>
+                            <button id="newFolderBtn" class="btn btn-secondary"
+                                onclick="window.fileSystem.openCreateFolderModal()">+ New Folder</button>
+                        </div>
+                        <div id="folderGrid" class="folder-grid">
+                            <!-- Folders and files will be injected here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Create Folder Modal -->
+    <div id="createFolderModal" class="modal-overlay" style="display: none;">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Create New Folder</h3>
+                <button class="modal-close" onclick="window.fileSystem.closeCreateFolderModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="newFolderNameInput" placeholder="Enter folder name" class="modal-input">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="window.fileSystem.closeCreateFolderModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="window.fileSystem.confirmCreateFolder()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Viewer Modal -->
+    <div id="fileViewerModal" class="modal-overlay" style="display: none; z-index: 1100;">
+        <div class="modal" style="max-width: 900px; width: 90%; height: 85vh; display: flex; flex-direction: column;">
+            <div class="modal-header">
+                <h3 id="fileViewerTitle">File Viewer</h3>
+                <button class="modal-close" onclick="window.fileSystem.closeFileViewer()">&times;</button>
+            </div>
+            <div class="modal-body"
+                style="flex: 1; overflow: hidden; padding: 0; background: #fff; border-radius: 4px;">
+                <iframe id="fileViewerFrame" style="width: 100%; height: 100%; border: none;"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script src="config.js?v=4"></script>
+    <script src="notifications.js?v=4"></script>
+    <script src="filesystem.js?v=4"></script>
+</body>
+
+</html>
