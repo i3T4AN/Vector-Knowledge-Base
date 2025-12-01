@@ -1,0 +1,128 @@
+<!-- =====================================================================
+     i3T4AN (Ethan Blair)
+     Project:      Vector Knowledge Base
+     File:         Documents Management Page
+     ===================================================================== -->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Documents - Vector Knowledge Base</title>
+    <!-- Modular CSS - Load in order -->
+    <link rel="stylesheet" href="/css/base.css">
+    <link rel="stylesheet" href="/css/animations.css">
+    <link rel="stylesheet" href="/css/components.css">
+    <link rel="stylesheet" href="/css/layout.css">
+    <link rel="stylesheet" href="/css/filesystem.css">
+    <link rel="stylesheet" href="/css/modals.css">
+    <link rel="stylesheet" href="/css/batch-upload.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Fira+Code&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Vector Knowledge Base</h1>
+            <p class="subtitle">Semantic search across your uploaded documents</p>
+        </header>
+
+        <div class="tabs">
+            <a href="index.html" class="tab-btn">Search</a>
+            <a href="documents.html" class="tab-btn active">My Documents</a>
+            <a href="files.html" class="tab-btn">Files</a>
+        </div>
+
+        <main>
+            <!-- Documents Content -->
+            <div id="docsTab">
+                <div class="docs-content-wrapper">
+                    <!-- Upload Section -->
+                    <div class="upload-section">
+                        <div class="section-header"
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                            <h2 style="margin-bottom: 0; color: var(--text-primary);">Upload Documents</h2>
+                            <div class="header-actions">
+                                <button id="exportBtn" class="btn btn-secondary" style="margin-right: 10px;">Export
+                                    Data</button>
+                                <button id="deleteDataBtn" class="btn btn-danger"
+                                    style="background-color: #dc3545; color: white; border: none;">Delete Data</button>
+                            </div>
+                        </div>
+                        <div id="dropZone" class="drop-zone">
+                            <p>Drag & Drop files here or <span class="browse-btn" id="browseFilesBtn">Browse
+                                    Files</span> | <span class="browse-btn" id="browseFolderBtn">Browse Folder</span>
+                            </p>
+                            <input type="file" id="fileInput" hidden multiple>
+                            <input type="file" id="folderInput" hidden multiple webkitdirectory directory>
+                        </div>
+                        <div class="upload-controls">
+                            <input type="text" id="categoryInput" placeholder="Category" required>
+                            <input type="text" id="uploadTags" placeholder="Tags (comma separated)">
+                            <button id="uploadBtn" class="btn btn-primary">Upload</button>
+                        </div>
+                        <div id="uploadProgress" class="progress-bar">
+                            <div class="progress-fill"></div>
+                        </div>
+                        <div id="uploadStatus" class="status-msg"></div>
+                    </div>
+
+                    <div id="batchQueueCard" class="batch-queue-card" style="display: none;">
+                        <div class="section-header">
+                            <h2 style="margin-bottom: 0; color: var(--text-primary);">Queue</h2>
+                            <span id="queueCounter" class="queue-counter">0 / 0</span>
+                        </div>
+                        <div id="queueList" class="queue-list">
+                            <!-- Queue items will be injected here -->
+                        </div>
+                        <div class="queue-actions">
+                            <button id="cancelBatchBtn" class="btn btn-danger">Cancel All</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stats-bar">
+                    <div class="stat-card">
+                        <h3>Total Documents</h3>
+                        <p id="totalDocs">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total Chunks</h3>
+                        <p id="totalChunks">0</p>
+                    </div>
+                </div>
+
+                <div class="docs-controls">
+                    <button id="refreshDocsBtn" class="btn btn-secondary">Refresh List</button>
+                </div>
+
+                <div class="table-container">
+                    <table id="docsTable">
+                        <thead>
+                            <tr>
+                                <th>Filename</th>
+                                <th>Category</th>
+                                <th>Tags</th>
+                                <th>Date</th>
+                                <th>Chunks</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Docs injected here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="config.js?v=4"></script>
+    <script src="notifications.js?v=4"></script>
+    <script src="upload.js?v=4"></script>
+    <script src="documents.js?v=4"></script>
+</body>
+
+</html>
