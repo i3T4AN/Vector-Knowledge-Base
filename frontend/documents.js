@@ -9,10 +9,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const totalDocsEl = document.getElementById('totalDocs');
     const totalChunksEl = document.getElementById('totalChunks');
     const refreshBtn = document.getElementById('refreshDocsBtn');
-    const docsTabBtn = document.querySelector('.tab-btn[data-tab="docsTab"]');
+    // Load docs automatically on page load
+    loadDocuments();
 
-    // Load docs when tab is clicked
-    docsTabBtn.addEventListener('click', loadDocuments);
     refreshBtn.addEventListener('click', loadDocuments);
 
     async function loadDocuments() {
@@ -46,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
         docsTableBody.innerHTML = docs.map(doc => `
             <tr>
                 <td>${escapeHtml(doc.filename)}</td>
-                <td>${escapeHtml(doc.metadata.course_name || '-')}</td>
+                <td>${escapeHtml(doc.metadata.category || '-')}</td>
                 <td>${(doc.metadata.tags || []).join(', ') || '-'}</td>
                 <td>${new Date(doc.upload_date * 1000).toLocaleDateString()}</td>
                 <td>${doc.total_chunks || 0}</td>
