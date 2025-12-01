@@ -9,10 +9,11 @@
 document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('searchInput');
     const searchBtn = document.getElementById('searchBtn');
-    const extFilter = document.getElementById('extFilter');
+
     const dateStart = document.getElementById('dateStart');
     const dateEnd = document.getElementById('dateEnd');
     const limitFilter = document.getElementById('limitFilter');
+    const clusterFilter = document.getElementById('cluster-filter');
     const resultsGrid = document.getElementById('resultsGrid');
     const loading = document.getElementById('loading');
     const resultCount = document.getElementById('resultCount');
@@ -22,6 +23,120 @@ document.addEventListener('DOMContentLoaded', () => {
     searchInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') performSearch();
     });
+
+    // Clustering Button
+    const clusterBtn = document.getElementById('clusterBtn');
+    if (clusterBtn) {
+        clusterBtn.addEventListener('click', async () => {
+            clusterBtn.disabled = true;
+            const originalText = clusterBtn.textContent;
+            clusterBtn.textContent = 'Clustering...';
+
+            try {
+                const response = await fetch(`${API_URL}/api/cluster`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) throw new Error('Clustering failed');
+
+                const result = await response.json();
+
+                // Create a summary of cluster names if available
+                let clusterSummary = '';
+                if (result.cluster_names) {
+                    const names = Object.values(result.cluster_names)
+                        .filter(n => n !== 'Uncategorized')
+                        .slice(0, 3); // Show top 3
+                    if (names.length > 0) {
+                        clusterSummary = `: "${names.join('", "')}"` + (Object.keys(result.cluster_names).length > 4 ? '...' : '');
+                    }
+                }
+
+                showNotification(
+                    `Clustered ${result.total_chunks} chunks from ${result.total_documents} documents into ${result.clusters} clusters${clusterSummary}`,
+                    'success'
+                );
+
+                // Refresh cluster dropdown
+                await loadClusters();
+
+                // Refresh visualization if active
+                if (window.embeddingVisualizer) {
+                    await window.embeddingVisualizer.fetchAllEmbeddings3D();
+                    window.embeddingVisualizer.renderCorpusPoints();
+                }
+
+            } catch (error) {
+                console.error('Clustering error:', error);
+                showNotification('Clustering failed: ' + error.message, 'error');
+            } finally {
+                clusterBtn.disabled = false;
+                clusterBtn.textContent = originalText;
+            }
+        });
+    }
+
+    // Populate Cluster Dropdown
+    if (clusterFilter) {
+        loadClusters();
+
+        // Sync with Visualizer
+        clusterFilter.addEventListener('change', () => {
+            if (window.embeddingVisualizer) {
+                window.embeddingVisualizer.setClusterFilter(clusterFilter.value);
+            }
+        });
+    }
+
+    async function loadClusters() {
+        if (!clusterFilter) return;
+
+        try {
+            const response = await fetch(`${API_URL}/api/clusters`);
+            const data = await response.json();
+
+            // Save current selection
+            const currentSelection = clusterFilter.value;
+
+            // Clear existing options except "All Clusters"
+            // Assuming the first option is "All Clusters" with value "all" or ""
+            // We'll rebuild from scratch but keep the first one if it's the default
+            const defaultOption = clusterFilter.options[0];
+            clusterFilter.innerHTML = '';
+            if (defaultOption) clusterFilter.appendChild(defaultOption);
+
+            if (data.clusters && data.clusters.length > 0) {
+                // Sort clusters: numbered ones first, then -1 (Uncategorized) at the end
+                const sortedClusters = data.clusters.sort((a, b) => {
+                    if (a.id === -1) return 1;
+                    if (b.id === -1) return -1;
+                    return a.id - b.id;
+                });
+
+                sortedClusters.forEach(cluster => {
+                    const option = document.createElement('option');
+                    option.value = cluster.id;
+                    if (cluster.id === -1) {
+                        option.textContent = 'Uncategorized';
+                    } else {
+                        // Format: "1: Shakespeare & Drama"
+                        option.textContent = `${cluster.id}: ${cluster.name}`;
+                    }
+                    clusterFilter.appendChild(option);
+                });
+
+                // Restore selection if it still exists
+                if (currentSelection) {
+                    const optionExists = Array.from(clusterFilter.options).some(opt => opt.value === currentSelection);
+                    if (optionExists) {
+                        clusterFilter.value = currentSelection;
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Failed to load clusters:', err);
+        }
+    }
 
     async function performSearch() {
         const query = searchInput.value.trim();
@@ -34,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Prepare filters
         const filters = {};
-        if (extFilter.value) filters.extension = extFilter.value;
+
 
         // Date Range
         if (dateStart.value || dateEnd.value) {
@@ -50,6 +165,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+
+
         try {
             const response = await fetch(`${API_URL}/search`, {
                 method: 'POST',
@@ -59,13 +176,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({
                     query: query,
                     limit: parseInt(limitFilter.value),
-                    filters: Object.keys(filters).length > 0 ? filters : null
+                    filters: Object.keys(filters).length > 0 ? filters : null,
+                    cluster_filter: clusterFilter ? clusterFilter.value : 'all'
                 })
             });
 
             if (!response.ok) throw new Error('Search failed');
 
             const data = await response.json();
+
+            // Update 3D visualization
+            if (window.embeddingVisualizer) {
+                // Don't await this to keep UI responsive
+                const currentCluster = clusterFilter ? clusterFilter.value : 'all';
+                window.embeddingVisualizer.fetchQueryEmbedding3D(query, currentCluster).then(visData => {
+                    if (visData) {
+                        window.embeddingVisualizer.renderQueryPoint(visData.queryCoords);
+                        window.embeddingVisualizer.renderNeighborLines(visData.queryCoords, visData.neighbors);
+                    }
+                }).catch(err => console.error("Visualizer error:", err));
+            }
+
             displayResults(data.results);
             resultCount.textContent = `Found ${data.count} results`;
 
@@ -96,9 +227,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div class="result-content">${escapeHtml(snippet)}</div>
                 <div class="result-meta">
-                    ${result.metadata.tags ? `<span class="meta-tag">🏷️ ${escapeHtml(Array.isArray(result.metadata.tags) ? result.metadata.tags.join(', ') : result.metadata.tags)}</span>` : ''}
-                    ${result.metadata.course_name ? `<span class="meta-tag">📚 ${escapeHtml(result.metadata.course_name)}</span>` : ''}
-                    ${result.metadata.document_type ? `<span class="meta-tag">📄 ${escapeHtml(result.metadata.document_type)}</span>` : ''}
+                    ${result.metadata.tags && result.metadata.tags !== 'undefined' ? `<span class="meta-tag"><span class="purple-emoji">🏷️</span> ${escapeHtml(Array.isArray(result.metadata.tags) ? result.metadata.tags.join(', ') : result.metadata.tags)}</span>` : ''}
+                    ${result.metadata.category && result.metadata.category !== 'undefined' ? `<span class="meta-tag"><span class="purple-emoji">📚</span> ${escapeHtml(result.metadata.category)}</span>` : ''}
+                    ${(() => {
+                    if (result.metadata.cluster === undefined || result.metadata.cluster === null) return '';
+
+                    const clusterId = result.metadata.cluster;
+                    if (clusterId === -1) return `<span class="meta-tag"><span class="purple-emoji">🔢</span> Uncategorized</span>`;
+
+                    const name = result.metadata.cluster_name || '';
+                    // Format: "🔢 Cluster 1: Shakespeare & Drama"
+                    return `<span class="meta-tag"><span class="purple-emoji">🔢</span> Cluster ${clusterId}: ${escapeHtml(name)}</span>`;
+                })()}
                 </div>
             </div>
         `}).join('');
