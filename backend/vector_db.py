@@ -41,6 +41,17 @@ class VectorDBClient:
             logger.error(f"Failed to ensure collection: {e}")
             raise
 
+    def reset_collection(self):
+        """Delete and recreate the collection"""
+        try:
+            logger.info(f"Resetting collection: {self.collection_name}")
+            self.client.delete_collection(self.collection_name)
+            self.ensure_collection()
+            logger.info("Collection reset successfully")
+        except Exception as e:
+            logger.error(f"Failed to reset collection: {e}")
+            raise
+
     def upsert_vectors(self, vectors: List[List[float]], metadata_list: List[Dict[str, Any]]):
         """Insert or update vectors with metadata"""
         if len(vectors) != len(metadata_list):
@@ -137,26 +148,34 @@ class VectorDBClient:
         # Let's just scroll through all points (limit 1000) and deduplicate in python for now.
         
         try:
-            # Scroll through points
-            points, _ = self.client.scroll(
-                collection_name=self.collection_name,
-                limit=100,
-                with_payload=True,
-                with_vectors=False
-            )
-            
             unique_docs = {}
-            for point in points:
-                if point.payload:
-                    doc_name = point.payload.get("filename") or point.payload.get("course_name")
-                    if doc_name and doc_name not in unique_docs:
-                        unique_docs[doc_name] = {
-                            "filename": doc_name,
-                            "id": point.payload.get("file_id"),
-                            "upload_date": point.payload.get("upload_date"),
-                            "total_chunks": point.payload.get("total_chunks"),
-                            "metadata": point.payload
-                        }
+            offset = None
+            limit = 100
+            
+            while True:
+                points, next_offset = self.client.scroll(
+                    collection_name=self.collection_name,
+                    limit=limit,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False
+                )
+                
+                for point in points:
+                    if point.payload:
+                        doc_name = point.payload.get("filename") or point.payload.get("course_name")
+                        if doc_name and doc_name not in unique_docs:
+                            unique_docs[doc_name] = {
+                                "filename": doc_name,
+                                "id": point.payload.get("file_id"),
+                                "upload_date": point.payload.get("upload_date"),
+                                "total_chunks": point.payload.get("total_chunks"),
+                                "metadata": point.payload
+                            }
+                
+                offset = next_offset
+                if offset is None:
+                    break
             
             return list(unique_docs.values())
         except Exception as e:
@@ -183,6 +202,63 @@ class VectorDBClient:
         except Exception as e:
             logger.error(f"Failed to delete document: {e}")
             raise
+
+    def get_all_embeddings(self) -> List[Dict[str, Any]]:
+        """
+        Fetch all embeddings and their metadata from the collection.
+        Returns a list of dicts with 'id', 'vector', and 'metadata'.
+        """
+        try:
+            all_points = []
+            offset = None
+            limit = 100
+            
+            while True:
+                points, next_offset = self.client.scroll(
+                    collection_name=self.collection_name,
+                    limit=limit,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=True
+                )
+                
+                for point in points:
+                    all_points.append({
+                        "id": point.id,
+                        "vector": point.vector,
+                        "metadata": point.payload
+                    })
+                
+                offset = next_offset
+                if offset is None:
+                    break
+                    
+            return all_points
+        except Exception as e:
+            logger.error(f"Failed to fetch all embeddings: {e}")
+            return []
+
+    def get_vectors_by_ids(self, ids: List[str]) -> List[Dict[str, Any]]:
+        """Fetch vectors for specific IDs"""
+        try:
+            points = self.client.retrieve(
+                collection_name=self.collection_name,
+                ids=ids,
+                with_vectors=True,
+                with_payload=True
+            )
+            
+            results = []
+            for point in points:
+                results.append({
+                    "id": point.id,
+                    "vector": point.vector,
+                    "metadata": point.payload
+                })
+            return results
+        except Exception as e:
+            logger.error(f"Failed to fetch vectors by IDs: {e}")
+            return []
 
 # Global instance
 vector_db = VectorDBClient()
