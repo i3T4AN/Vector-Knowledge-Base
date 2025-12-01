@@ -196,6 +196,67 @@ class FileSystemDB:
         conn.close()
         logger.info(f"Removed file {filename} from file system")
 
+    def get_or_create_folder_path(self, path_components: List[str]) -> str:
+        """
+        Get or create a folder path from a list of folder names.
+        
+        Args:
+            path_components: List of folder names in order, e.g., ['schoolwork', 'senior year', 'math']
+        
+        Returns:
+            The ID of the final folder in the path
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        current_parent_id = None  # Start at root
+        
+        for folder_name in path_components:
+            # Check if folder exists under current parent
+            if current_parent_id is None:
+                cursor.execute(
+                    "SELECT id FROM folders WHERE name = ? AND parent_id IS NULL",
+                    (folder_name,)
+                )
+            else:
+                cursor.execute(
+                    "SELECT id FROM folders WHERE name = ? AND parent_id = ?",
+                    (folder_name, current_parent_id)
+                )
+            
+            result = cursor.fetchone()
+            
+            if result:
+                # Folder exists, use it
+                current_parent_id = result['id']
+                logger.info(f"Found existing folder: {folder_name} (ID: {current_parent_id})")
+            else:
+                # Folder doesn't exist, create it
+                folder_id = str(uuid.uuid4())
+                cursor.execute(
+                    "INSERT INTO folders (id, name, parent_id) VALUES (?, ?, ?)",
+                    (folder_id, folder_name, current_parent_id)
+                )
+                conn.commit()
+                current_parent_id = folder_id
+                logger.info(f"Created folder: {folder_name} (ID: {folder_id}, Parent: {current_parent_id})")
+        
+        conn.close()
+        return current_parent_id
+
+    def reset_db(self):
+        """Reset the database by clearing all tables."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("DELETE FROM file_folders")
+        cursor.execute("DELETE FROM folders")
+        
+        conn.commit()
+        conn.close()
+        logger.info("File system database reset")
+
 
 # Global instance
 fs_db = FileSystemDB()
