@@ -1,0 +1,154 @@
+/* =====================================================================
+   i3T4AN (Ethan Blair)
+   Project:      Vector Knowledge Base
+   File:         Batch Upload Queue Styles
+   ===================================================================== */
+
+.batch-queue-card {
+    background: rgba(255, 255, 255, .02);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border);
+    border-radius: 1.5rem;
+    box-shadow: var(--shadow);
+    padding: 2rem;
+    margin-left: 1.5rem;
+    min-width: 350px;
+    max-width: 400px;
+    max-height: 600px;
+    display: flex;
+    flex-direction: column;
+}
+
+.batch-queue-card .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.queue-counter {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 800;
+    font-size: 1.25rem;
+}
+
+.queue-list {
+    flex: 1;
+    overflow-y: auto;
+    margin-bottom: 1rem;
+}
+
+.queue-item {
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+    background: rgba(255, 255, 255, .03);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    transition: var(--transition);
+}
+
+.queue-item-icon {
+    font-size: 1.5rem;
+    margin-right: 1rem;
+}
+
+.queue-item-content {
+    flex: 1;
+    overflow: hidden;
+}
+
+.queue-item-path {
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 0.25rem;
+}
+
+.queue-item-status {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.queue-item-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-left: 0.75rem;
+}
+
+/* Status-specific styles */
+.queue-pending .queue-item-indicator {
+    background: var(--text-muted);
+}
+
+.queue-uploading {
+    border-color: var(--accent);
+    background: rgba(138, 43, 226, 0.1);
+}
+
+.queue-uploading .queue-item-indicator {
+    background: var(--accent);
+    animation: pulse 1s infinite;
+}
+
+.queue-success .queue-item-indicator {
+    background: #10b981;
+}
+
+.queue-error {
+    border-color: var(--error-color);
+}
+
+.queue-error .queue-item-indicator {
+    background: var(--error-color);
+}
+
+.queue-error .queue-item-status {
+    color: var(--error-color);
+}
+
+.queue-actions {
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+/* Layout adjustment for upload section + batch queue */
+.upload-section {
+    padding: 2rem;
+    margin-bottom: 2rem;
+}
+
+/* When batch queue is visible, adjust grid */
+@media (min-width: 1024px) {
+    .docs-content-wrapper {
+        display: flex;
+        gap: 1.5rem;
+        align-items: flex-start;
+        justify-content: center;
+    }
+}
