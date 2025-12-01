@@ -1,0 +1,60 @@
+# =======================================================================
+# i3T4AN (Ethan Blair)
+# Project:      Vector Knowledge Base
+# File:         Docker Compose configuration
+# =======================================================================
+
+version: '3.8'
+
+services:
+  # Qdrant vector database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: vkb-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
+    restart: unless-stopped
+    networks:
+      - vkb-network
+
+  # Backend FastAPI service
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vkb-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/uploads:/app/backend/uploads
+    environment:
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+    networks:
+      - vkb-network
+
+  # Frontend static file server
+  frontend:
+    image: nginx:alpine
+    container_name: vkb-frontend
+    ports:
+      - "8001:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+    networks:
+      - vkb-network
+
+networks:
+  vkb-network:
+    driver: bridge
+
+volumes:
+  qdrant_storage:
+  backend_data:
