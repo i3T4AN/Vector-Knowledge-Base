@@ -56,62 +56,57 @@ class Chunker:
         sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])|(?<=[.!?])\s*$', text)
         sentences = [s.strip() for s in sentences if s.strip()]
         
+        # OPTIMIZATION: Pre-compute token counts for all sentences (cache to avoid redundant tokenization)
+        sentence_token_counts = [self._count_tokens(s) for s in sentences]
+        
         chunks = []
-        current_chunk_tokens = []
-        current_chunk_text = ""
-        current_start_char = 0
+        i = 0
         
-        # Track character position
-        char_cursor = 0
-        
-        for sentence in sentences:
-            sentence_token_count = self._count_tokens(sentence)
-            current_chunk_token_count = self._count_tokens(current_chunk_text)
+        while i < len(sentences):
+            current_chunk = []
+            current_chunk_tokens = []  # Store token counts for this chunk
+            current_tokens = 0
             
-            # If adding this sentence exceeds chunk size
-            if current_chunk_token_count + sentence_token_count > self.chunk_size:
-                # If current chunk is not empty, save it
-                if current_chunk_text:
-                    chunks.append({
-                        "text": current_chunk_text.strip(),
-                        "chunk_index": len(chunks),
-                        "token_count": current_chunk_token_count,
-                        "metadata": metadata.copy()
-                    })
-                    
-                    # Handle overlap
-                    # Keep last N tokens/sentences for overlap
-                    # For simplicity, we'll just start a new chunk with the current sentence
-                    # Implementing proper overlap with sentences is tricky without splitting sentences.
-                    # We will try to keep the last sentence if it fits in overlap?
-                    # Let's just start fresh for now to be safe on boundaries, or implement a sliding window of sentences.
-                    
-                    # Sliding window approach:
-                    # We need to backtrack. But since we are iterating, let's just reset.
-                    # To do overlap properly, we should maintain a buffer of sentences.
-                    pass
-
-                current_chunk_text = sentence
-                current_chunk_tokens = [sentence]
-            else:
-                if current_chunk_text:
-                    current_chunk_text += " " + sentence
-                else:
-                    current_chunk_text = sentence
-                current_chunk_tokens.append(sentence)
+            # Build a chunk
+            while i < len(sentences):
+                sentence = sentences[i]
+                tokens = sentence_token_counts[i]  # Use cached token count
                 
-            # Update cursor (approximate, real implementation needs to track original text offsets)
-            char_cursor += len(sentence) + 1 
-
-        # Add last chunk
-        if current_chunk_text:
+                if current_tokens + tokens > self.chunk_size and current_chunk:
+                    break
+                
+                current_chunk.append(sentence)
+                current_chunk_tokens.append(tokens)  # Cache for overlap calculation
+                current_tokens += tokens
+                i += 1
+            
+            # Save chunk
             chunks.append({
-                "text": current_chunk_text.strip(),
-                "chunk_index": len(chunks),
-                "token_count": self._count_tokens(current_chunk_text),
-                "metadata": metadata.copy()
+                'text': ' '.join(current_chunk),
+                'chunk_index': len(chunks),
+                'token_count': current_tokens,
+                'metadata': metadata.copy()
             })
             
+            # OVERLAP: Backtrack to include last N tokens in next chunk
+            if i < len(sentences):
+                overlap_tokens = 0
+                overlap_sentences = 0
+                
+                for j in range(len(current_chunk) - 1, -1, -1):
+                    overlap_tokens += current_chunk_tokens[j]  # Use cached token count (no re-tokenization!)
+                    
+                    # Prevent infinite loop: ensure at least one sentence advances
+                    if overlap_sentences + 1 >= len(current_chunk):
+                        break
+                        
+                    overlap_sentences += 1
+                    if overlap_tokens >= self.chunk_overlap:
+                        break
+                
+                # Rewind i to repeat these sentences in next chunk
+                i -= overlap_sentences
+        
         return chunks
 
     def _chunk_python_code(self, text: str, metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
