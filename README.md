@@ -21,7 +21,7 @@
 - **Cluster-Based Filtering** - Filter search results by document clusters for more focused searches
 - **Batch Upload & Folder Preservation** - Drag and drop entire folders to upload, automatically preserving folder structure in your knowledge base
 - **3D Embedding Visualization** - Interactive 3D visualization of your document embeddings using Three.js
-- **Multi-Format Support** - PDF, DOCX, TXT, Markdown, and code files (.py, .js, .java, etc.)
+- **Multi-Format Support** - PDF, DOCX, PPTX, XLSX, CSV, images (OCR), TXT, Markdown, and code files (Python, JavaScript, C#, etc.)
 - **Intelligent Chunking** - AST-aware parsing for code, sentence-boundary awareness for prose
 - **Folder Organization** - Drag-and-drop file management with custom folder hierarchy
 - **File Viewer** - Double-click any file to preview it directly in the browser
@@ -30,6 +30,7 @@
 - **Modern UI** - Clean, responsive interface with dark mode and modular CSS architecture
 - **Vector Embeddings** - Powered by SentenceTransformers (all-mpnet-base-v2, 768-dimensional embeddings)
 - **High-Performance Search** - Qdrant vector database for sub-50ms search queries
+- **O(1) Document Listing** - JSON-based document registry for instant document listing at any scale
 
 ![Main Search Interface](screenshots/search-interface.png)
 *Clean, modern dark-mode interface with semantic search and filtering options*
@@ -123,6 +124,53 @@ For development or if you prefer not to use Docker:
 
 > [!TIP]
 > On first run, the embedding model (~400MB) will be downloaded automatically. This may take a few minutes.
+
+### Option 3: Performance Mode (GPU Acceleration)
+
+For **significantly faster** embedding generation, run the backend natively with GPU support:
+
+| Mode | Embedding Speed | Best For |
+|------|----------------|----------|
+| Docker (CPU) | ~18s per batch | Cross-platform compatibility |
+| Native (Apple M1/M2/M3) | ~3s per batch (**6x faster**) | Mac with Apple Silicon |
+| Native (NVIDIA CUDA) | ~1s per batch (**18x faster**) | Windows/Linux with NVIDIA GPU |
+
+**Setup:**
+
+1. **Start Qdrant and Frontend in Docker**
+   ```bash
+   docker-compose -f docker-compose.native.yml up -d
+   # Or simply:
+   docker-compose up -d qdrant frontend
+   ```
+
+2. **Run the backend natively**
+   
+   **macOS/Linux:**
+   ```bash
+   ./scripts/start-backend-native.sh
+   ```
+   
+   **Windows:**
+   ```batch
+   scripts\start-backend-native.bat
+   ```
+
+The script will:
+- Create a virtual environment
+- Install dependencies
+- Auto-detect your GPU (MPS for Apple Silicon, CUDA for NVIDIA)
+- Start the backend with GPU acceleration
+
+> [!NOTE]
+> GPU acceleration requires PyTorch with MPS support (macOS 12.3+) or CUDA toolkit (Windows/Linux with NVIDIA).
+
+**Deployment Options Summary:**
+
+| Mode | Command | GPU | Speed | Use Case |
+|------|---------|-----|-------|----------|
+| Full Docker | `docker-compose up -d` | ❌ | ~18s/batch | Production, cross-platform |
+| Native Backend | `./scripts/start-backend-native.sh` | ✅ | ~1-3s/batch | Development, large uploads |
 
 ## Usage
 
@@ -232,6 +280,23 @@ In the **My Documents** tab, you can:
          Port 6333
 ```
 
+### Document Processing Pipeline
+
+```
+┌──────────┐    ┌───────────┐    ┌─────────┐    ┌──────────┐    ┌────────┐
+│  Upload  │ -> │ Extractor │ -> │ Chunker │ -> │ Embedder │ -> │ Qdrant │
+│  (File)  │    │  (Text)   │    │ (Chunks)│    │(Vectors) │    │ (Store)│
+└──────────┘    └───────────┘    └─────────┘    └──────────┘    └────────┘
+```
+
+**How Chunks Relate to Documents:**
+- Each uploaded file is processed by the appropriate **Extractor** to extract raw text
+- The **Chunker** splits the text into smaller pieces (default: 500 characters with 50-char overlap)
+- Each chunk is converted to a 768-dimensional vector by the **Embedder** (SentenceTransformers)
+- Chunks are stored in **Qdrant** with metadata linking them back to the original document
+- A single document may produce 10-100+ chunks depending on its length
+- Search queries match against individual chunks, but results show which document they came from
+
 ### Frontend Architecture
 
 **Multi-Page Application (MPA)**:
@@ -254,10 +319,23 @@ Pages communicate with the backend API and share a modular CSS architecture
 - Three.js for 3D embedding visualization
 - Fetch API for backend communication
 
-**File Processing:**
-- pypdf - PDF text extraction
-- docx2txt - Word document parsing
-- AST parser - Code-aware chunking
+**Extractor Architecture:**
+
+The application uses a factory pattern for modular file processing:
+
+- **ExtractorFactory** - Routes files to appropriate extractors based on file extension
+- **BaseExtractor** - Interface that all extractors implement with `extract(file_path) → str` method
+
+**Specialized Extractors:**
+- **PDFExtractor** - Uses `pypdf` for PDF text extraction
+- **DocxExtractor** - Uses `docx2txt` for Word document parsing
+- **PptxExtractor** - Uses `python-pptx` for PowerPoint presentations
+- **XlsxExtractor** - Uses `openpyxl` for Excel spreadsheets with multi-sheet support
+- **CsvExtractor** - Uses `pandas` for CSV file processing with configurable delimiters
+- **ImageExtractor** - Uses `pytesseract` + `PIL` for OCR on images (.jpg, .jpeg, .png, .webp)
+- **TextExtractor** - Handles plain text and Markdown files (.txt, .md)
+- **CodeExtractor** - AST-aware parsing for Python code with function/class extraction
+- **CsExtractor** - Dedicated C# file parsing with namespace and method detection
 
 ### CSS Architecture
 
@@ -351,6 +429,7 @@ Response: {
 - `DELETE /folders/{id}` - Delete empty folder
 - `POST /files/move` - Move file to folder
 - `GET /files/unsorted` - List unsorted files
+- `GET /files/in_folders` - Get file-to-folder mappings
 - `GET /files/content/{filename}` - Retrieve file content for viewing
 
 ### Clustering
@@ -364,7 +443,7 @@ Response: {
   "clusters": 5
 }
 # Automatically clusters all documents in the database
-# Determines optimal number of clusters using silhouette score
+# Automatically determines optimal number of clusters using HDBSCAN density-based algorithm
 ```
 
 ```http
@@ -397,25 +476,40 @@ Response: {
 
 ## Configuration
 
-Create a `.env` file in the backend directory:
+Create a `.env` file in the project root directory (copy from `.env.example`):
 
 ```env
 # Qdrant Configuration
-QDRANT_HOST=localhost
-QDRANT_PORT=6333
-QDRANT_COLLECTION=vector_db
+QDRANT_HOST=localhost        # Default: "localhost". Use "qdrant" when running in Docker Compose
+QDRANT_PORT=6333             # Default: 6333
+QDRANT_COLLECTION=vector_db  # Default: "vector_db"
 
 # File Upload Settings
-UPLOAD_DIR=../uploads
-MAX_FILE_SIZE=52428800  # 50MB
+UPLOAD_DIR=uploads           # Default: "uploads" (relative to backend directory)
+MAX_FILE_SIZE=52428800       # Default: 50MB (50 * 1024 * 1024 bytes)
 
 # Embedding Model
-EMBEDDING_MODEL=all-mpnet-base-v2
+EMBEDDING_MODEL=all-mpnet-base-v2  # Default: "all-mpnet-base-v2" (768-dimensional)
+
+# Compute Device (for native mode)
+DEVICE=auto                        # Options: "auto", "cpu", "cuda", "mps"
+                                   # auto = detect best available (MPS > CUDA > CPU)
 
 # Chunking Settings
-CHUNK_SIZE=500
-CHUNK_OVERLAP=50
+CHUNK_SIZE=500               # Default: 500 characters per chunk
+CHUNK_OVERLAP=50             # Default: 50 characters overlap between chunks
+
+# Security
+ADMIN_KEY=                   # Optional: protects /reset endpoint. Leave empty to disable.
+
+# Rate Limiting (High defaults for personal use)
+RATE_LIMIT_UPLOAD=1000/minute  # Default: 1000/minute (won't affect normal use)
+RATE_LIMIT_SEARCH=1000/minute  # Default: 1000/minute
+RATE_LIMIT_RESET=60/minute     # Default: 60/minute (stricter for destructive ops)
 ```
+
+> [!NOTE]
+> When using Docker Compose, `QDRANT_HOST` is automatically set to `qdrant` (the service name) in `docker-compose.yml`. You only need a `.env` file for manual installations or to override defaults.
 
 ## Troubleshooting
 
@@ -447,8 +541,9 @@ pip install --upgrade sentence-transformers huggingface-hub
 ### File Upload Fails
 
 Check supported file types:
-- Documents: `.pdf`, `.docx`, `.txt`, `.md`
-- Code: `.py`, `.js`, `.java`, `.cpp`, `.c`, `.h`, `.cs`
+- Documents: `.pdf`, `.docx`, `.pptx`, `.xlsx`, `.csv`, `.txt`, `.md`
+- Images: `.jpg`, `.jpeg`, `.png`, `.webp` (OCR-processed)
+- Code: `.py`, `.js`, `.java`, `.cpp`, `.html`, `.css`, `.json`, `.xml`, `.yaml`, `.yml`, `.cs`
 
 Maximum file size: 50MB (configurable)
 
@@ -471,45 +566,74 @@ This avoids IPv6/IPv4 resolution issues on some systems.
 ## Project Structure
 
 ```
-database/
+Vector-Knowledge-Base/
 ├── backend/
-│   ├── extractors/          # File format parsers
+│   ├── extractors/
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   ├── factory.py
 │   │   ├── pdf_extractor.py
 │   │   ├── docx_extractor.py
+│   │   ├── pptx_extractor.py
+│   │   ├── xlsx_extractor.py
+│   │   ├── csv_extractor.py
 │   │   ├── text_extractor.py
-│   │   └── code_extractor.py
-│   ├── main.py             # FastAPI application
-│   ├── vector_db.py        # Qdrant client
-│   ├── embedding_service.py # Embedding generation
-│   ├── ingestion.py        # File processing pipeline
-│   ├── chunker.py          # Text chunking logic
-│   ├── filesystem_db.py    # SQLite for folders
-│   ├── dimensionality_reduction.py # PCA for 3D visualization
-│   ├── config.py           # Configuration
-│   └── exceptions.py       # Custom exceptions
+│   │   ├── code_extractor.py
+│   │   ├── cs_extractor.py
+│   │   └── image_extractor.py
+│   ├── uploads/          # Uploaded files (gitignored except .gitkeep)
+│   │   └── .gitkeep
+│   ├── data/             # Runtime data (auto-created)
+│   │   └── documents.json  # Document registry for O(1) listing
+│   ├── main.py
+│   ├── vector_db.py
+│   ├── embedding_service.py
+│   ├── ingestion.py
+│   ├── chunker.py
+│   ├── clustering.py
+│   ├── filesystem_db.py
+│   ├── document_registry.py  # O(1) document listing registry
+│   ├── dimensionality_reduction.py
+│   ├── jobs.py           # Background task tracking
+│   ├── config.py
+│   ├── constants.py      # Shared constants
+│   └── exceptions.py
 ├── frontend/
-│   ├── css/                # Modular CSS architecture
-│   │   ├── base.css       # Variables, reset, foundation
-│   │   ├── animations.css # Keyframe animations
-│   │   ├── components.css # Buttons, cards, forms
-│   │   ├── layout.css     # Page layouts
-│   │   ├── filesystem.css # File manager styles
-│   │   ├── batch-upload.css # Batch upload queue styles
-│   │   └── modals.css     # Overlays and notifications
+│   ├── css/
+│   │   ├── base.css
+│   │   ├── animations.css
+│   │   ├── components.css
+│   │   ├── layout.css
+│   │   ├── filesystem.css
+│   │   ├── batch-upload.css
+│   │   └── modals.css
 │   ├── js/
-│   │   └── embedding-visualizer.js  # 3D visualization module
-│   ├── index.html          # Search page
-│   ├── documents.html      # Upload & document management
-│   ├── files.html          # File organization
-│   ├── config.js           # API configuration
-│   ├── search.js           # Search functionality
-│   ├── upload.js           # File upload
-│   ├── documents.js        # Document listing
-│   ├── filesystem.js       # Folder management
-│   └── notifications.js    # Toast notifications
-├── qdrant_storage/         # Vector DB persistence
-├── uploads/                # Uploaded files
-└── requirements.txt        # Python dependencies
+│   │   └── embedding-visualizer.js
+│   ├── index.html
+│   ├── documents.html
+│   ├── files.html
+│   ├── config.js
+│   ├── search.js
+│   ├── upload.js
+│   ├── documents.js
+│   ├── filesystem.js
+│   ├── notifications.js
+│   └── favicon.ico
+├── scripts/
+│   ├── start-backend-native.sh   # GPU mode startup (Unix)
+│   └── start-backend-native.bat  # GPU mode startup (Windows)
+├── screenshots/
+├── qdrant_storage/       # Created at runtime (gitignored)
+├── uploads/              # Created at runtime by Docker (gitignored)
+├── backend_db/           # Created at runtime (gitignored)
+├── Dockerfile
+├── docker-compose.yml          # Full Docker deployment
+├── docker-compose.native.yml   # Native backend mode
+├── nginx.conf
+├── requirements.txt
+├── requirements.in
+├── LICENSE
+└── README.md
 ```
 
 ## Performance
