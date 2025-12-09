@@ -20,6 +20,7 @@ services:
       - vkb-network
 
   # Backend FastAPI service
+  # Use --profile full to include, or omit for native backend mode
   backend:
     build:
       context: .
@@ -28,7 +29,9 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./backend/uploads:/app/backend/uploads
+      - ./backend:/app/backend
+      - ./uploads:/app/backend/uploads
+      - ./backend_db:/app/backend_db
     environment:
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
