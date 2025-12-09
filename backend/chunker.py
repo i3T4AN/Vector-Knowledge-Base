@@ -13,6 +13,9 @@ from transformers import AutoTokenizer
 logger = logging.getLogger(__name__)
 
 class Chunker:
+    # Model's max sequence length - chunks must not exceed this
+    MAX_MODEL_TOKENS = 500  # Leave some buffer below the 512 hard limit
+    
     def __init__(self, model_name: str = "sentence-transformers/all-mpnet-base-v2", chunk_size: int = 500, chunk_overlap: int = 50):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -26,6 +29,36 @@ class Chunker:
         if self.tokenizer:
             return len(self.tokenizer.encode(text, add_special_tokens=False))
         return len(text.split()) # Fallback approximation
+
+    def _split_oversized_text(self, text: str, max_tokens: int = None) -> List[str]:
+        """
+        Split text that exceeds max token limit into smaller pieces.
+        Uses word boundaries to avoid breaking mid-word.
+        """
+        max_tokens = max_tokens or self.MAX_MODEL_TOKENS
+        
+        if self._count_tokens(text) <= max_tokens:
+            return [text]
+        
+        # Split by words and rebuild chunks
+        words = text.split()
+        pieces = []
+        current_piece = []
+        current_tokens = 0
+        
+        for word in words:
+            word_tokens = self._count_tokens(word)
+            if current_tokens + word_tokens > max_tokens and current_piece:
+                pieces.append(' '.join(current_piece))
+                current_piece = []
+                current_tokens = 0
+            current_piece.append(word)
+            current_tokens += word_tokens
+        
+        if current_piece:
+            pieces.append(' '.join(current_piece))
+        
+        return pieces
 
     def chunk_text(self, text: str, metadata: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
@@ -55,6 +88,17 @@ class Chunker:
         # Look for [.!?] followed by whitespace and an uppercase letter or end of string
         sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])|(?<=[.!?])\s*$', text)
         sentences = [s.strip() for s in sentences if s.strip()]
+        
+        # 2. Split any oversized sentences that exceed model limits
+        processed_sentences = []
+        for sentence in sentences:
+            if self._count_tokens(sentence) > self.MAX_MODEL_TOKENS:
+                # Split this oversized sentence into smaller pieces
+                pieces = self._split_oversized_text(sentence, self.MAX_MODEL_TOKENS)
+                processed_sentences.extend(pieces)
+            else:
+                processed_sentences.append(sentence)
+        sentences = processed_sentences
         
         # OPTIMIZATION: Pre-compute token counts for all sentences (cache to avoid redundant tokenization)
         sentence_token_counts = [self._count_tokens(s) for s in sentences]
@@ -146,7 +190,7 @@ class Chunker:
                     current_chunk_lines.extend(node_lines)
                     current_chunk_token_count += node_tokens
                 else:
-                    # Non-locatable node (e.g. imports sometimes?), just skip or add
+                    # Skip nodes without line info (rare edge case)
                     pass
             
             # Add remaining
