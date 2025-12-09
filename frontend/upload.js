@@ -7,7 +7,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
-    const folderInput = document.getElementById('folderInput'); // New
+    const folderInput = document.getElementById('folderInput');
     const uploadBtn = document.getElementById('uploadBtn');
     const categoryInput = document.getElementById('categoryInput');
     const uploadTags = document.getElementById('uploadTags');
@@ -15,8 +15,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const progressFill = document.querySelector('.progress-fill');
     const uploadStatus = document.getElementById('uploadStatus');
 
+    // Module-level allowed extensions (fetched from backend)
+    let allowedExtensions = null;
+
+    // Fetch allowed extensions from backend on load
+    async function loadAllowedExtensions() {
+        try {
+            const response = await fetch(`${API_URL}/config/allowed-extensions`);
+            if (response.ok) {
+                const data = await response.json();
+                allowedExtensions = new Set(data.extensions);
+                console.log('Loaded allowed extensions from API:', allowedExtensions);
+            }
+        } catch (error) {
+            console.warn('Failed to load allowed extensions from API, using fallback');
+            // Fallback to hardcoded list if API fails
+            allowedExtensions = new Set(['.pdf', '.docx', '.pptx', '.ppt', '.xlsx', '.csv', '.jpg', '.jpeg', '.png', '.webp', '.txt', '.md', '.py', '.js', '.java', '.cpp', '.html', '.css', '.json', '.xml', '.yaml', '.yml', '.cs']);
+        }
+    }
+
+    // Load extensions immediately
+    loadAllowedExtensions();
+
     // Drag & Drop Handlers
-    // dropZone.addEventListener('click', () => fileInput.click()); // Removed simple click
 
     const browseFilesBtn = document.getElementById('browseFilesBtn');
     const browseFolderBtn = document.getElementById('browseFolderBtn');
@@ -202,12 +223,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            // Prompt for admin key (may be empty if not configured on server)
+            const adminKey = prompt('Enter admin password (leave empty if not configured):');
+            if (adminKey === null) return; // User cancelled
+
             try {
                 deleteDataBtn.disabled = true;
                 deleteDataBtn.textContent = 'Deleting...';
 
                 const response = await fetch(`${API_URL}/reset`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    headers: adminKey ? { 'X-Admin-Key': adminKey } : {}
                 });
 
                 if (!response.ok) {
@@ -242,6 +268,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Batch Upload & Folder Traversal Logic
     // ==========================================
 
+    /**
+     * Recursively traverse file system entries from drag-drop or file picker.
+     * @param {FileSystemEntry[]} entries - Array of FileSystemEntry objects
+     * @returns {Promise<Array<{file: File, relativePath: string, folderPath: string|null}>>}
+     */
     async function traverseFileTree(entries) {
         const filesWithPaths = [];
 
@@ -289,9 +320,18 @@ document.addEventListener('DOMContentLoaded', () => {
         return filesWithPaths;
     }
 
+    /**
+     * Process and upload a batch of files with their relative paths.
+     * @param {Array<{file: File, relativePath: string, folderPath: string|null}>} filesWithPaths
+     * @returns {Promise<void>}
+     */
     async function handleBatchUpload(filesWithPaths) {
+        // Ensure extensions are loaded
+        if (!allowedExtensions) {
+            await loadAllowedExtensions();
+        }
+
         // Filter out incompatible files and show notifications
-        const allowedExtensions = new Set(['.pdf', '.txt', '.md', '.docx', '.py', '.js', '.html', '.css']);
         const validFiles = [];
 
         for (const item of filesWithPaths) {
@@ -307,6 +347,18 @@ document.addEventListener('DOMContentLoaded', () => {
             window.notifications.error('No compatible files found in the batch');
             return;
         }
+
+        // ========== NEW: GROUP FILES BY FOLDER PATH ==========
+        const folderGroups = {};
+        for (const item of validFiles) {
+            const folderKey = item.folderPath || '__root__'; // Use '__root__' for files without folder
+            if (!folderGroups[folderKey]) {
+                folderGroups[folderKey] = [];
+            }
+            folderGroups[folderKey].push(item);
+        }
+
+        console.log(`Grouped ${validFiles.length} files into ${Object.keys(folderGroups).length} folder batches`);
 
         // Show batch queue card
         const batchCard = document.getElementById('batchQueueCard');
@@ -337,26 +389,49 @@ document.addEventListener('DOMContentLoaded', () => {
         renderQueue(queue);
         updateQueueCounter(0, queue.length);
 
-        // Upload files sequentially
+        // ========== UPLOAD FOLDER-GROUPED BATCHES ==========
         let completed = 0;
-        for (const item of queue) {
+
+        for (const [folderKey, items] of Object.entries(folderGroups)) {
             // Check if cancelled (simple check via UI state)
             if (batchCard.style.display === 'none') break;
 
-            item.status = 'uploading';
-            updateQueueItem(item);
+            const folderPath = folderKey === '__root__' ? null : folderKey;
 
-            try {
-                await uploadFileWithPath(item.file, item.folderPath);
-                item.status = 'success';
-                completed++;
-            } catch (error) {
-                item.status = 'error';
-                item.error = error.message;
+            // Mark all items in this folder batch as uploading
+            for (const item of items) {
+                const queueItem = queue.find(q => q.file === item.file);
+                if (queueItem) {
+                    queueItem.status = 'uploading';
+                    updateQueueItem(queueItem);
+                }
             }
 
-            updateQueueItem(item);
-            updateQueueCounter(completed, queue.length);
+            try {
+                // Upload entire folder batch at once
+                const result = await uploadFolderBatch(items.map(i => i.file), folderPath);
+
+                // Mark as success
+                for (const item of items) {
+                    const queueItem = queue.find(q => q.file === item.file);
+                    if (queueItem) {
+                        queueItem.status = 'success';
+                        updateQueueItem(queueItem);
+                        completed++;
+                        updateQueueCounter(completed, queue.length);
+                    }
+                }
+            } catch (error) {
+                // Mark as error
+                for (const item of items) {
+                    const queueItem = queue.find(q => q.file === item.file);
+                    if (queueItem) {
+                        queueItem.status = 'error';
+                        queueItem.error = error.message;
+                        updateQueueItem(queueItem);
+                    }
+                }
+            }
         }
 
         // Update button to "Done" when finished
@@ -400,30 +475,37 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('queueCounter').textContent = `${completed} / ${total}`;
     }
 
-    async function uploadFileWithPath(file, folderPath) {
+    async function uploadFolderBatch(files, folderPath) {
         const formData = new FormData();
-        formData.append('file', file);
+
+        // Append all files
+        for (const file of files) {
+            formData.append('files', file);
+        }
+
+        // Append metadata
         formData.append('category', categoryInput.value.trim() || 'Batch Upload');
 
         if (uploadTags.value.trim()) {
             formData.append('tags', uploadTags.value.trim());
         }
 
-        // Add relative_path if file is in a folder
+        // Add relative_path if files are in a folder
         if (folderPath) {
             formData.append('relative_path', folderPath);
         }
 
-        const response = await fetch(`${API_URL}/upload`, {
+        const response = await fetch(`${API_URL}/upload-batch`, {
             method: 'POST',
             body: formData
         });
 
         if (!response.ok) {
             const error = await response.json();
-            throw new Error(error.detail || 'Upload failed');
+            throw new Error(error.detail || 'Batch upload failed');
         }
 
+        return await response.json();
     }
 
     // Note: Cancel batch button behavior is managed dynamically in handleBatchUpload()
