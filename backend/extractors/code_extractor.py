@@ -7,6 +7,7 @@
 from typing import Tuple, Dict, Any
 import logging
 from .base import BaseExtractor
+from exceptions import ExtractionError
 
 logger = logging.getLogger(__name__)
 
@@ -25,4 +26,4 @@ class CodeExtractor(BaseExtractor):
             
         except Exception as e:
             logger.error(f"Error extracting Code file {file_path}: {str(e)}")
-            raise ValueError(f"Failed to extract Code file: {str(e)}")
+            raise ExtractionError(f"Failed to extract Code file: {str(e)}")
