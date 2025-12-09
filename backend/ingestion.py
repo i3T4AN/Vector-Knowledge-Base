@@ -9,6 +9,7 @@ Ingestion Service - Handles file upload and processing
 """
 from fastapi import UploadFile
 import os
+import re
 import uuid
 import time
 import logging
@@ -22,6 +23,38 @@ from exceptions import InvalidFileFormatError, FileSizeExceededError, Extraction
 
 logger = logging.getLogger(__name__)
 
+
+def sanitize_filename(filename: str) -> str:
+    """
+    Sanitize a filename to be safe for all filesystems.
+    
+    - Removes path components (prevents path traversal)
+    - Removes null bytes and control characters
+    - Replaces Windows-illegal characters: < > : " / \\ | ? *
+    - Limits filename length to 200 characters
+    - Handles empty or whitespace-only names
+    """
+    # Remove path components
+    filename = os.path.basename(filename)
+    
+    # Remove null bytes and control characters
+    filename = re.sub(r'[\x00-\x1f\x7f]', '', filename)
+    
+    # Replace Windows-illegal characters: < > : " / \ | ? *
+    filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+    
+    # Limit length (255 is common max, leave room for unique suffix)
+    if len(filename) > 200:
+        name, ext = os.path.splitext(filename)
+        filename = name[:200-len(ext)] + ext
+    
+    # Handle empty or whitespace-only names
+    if not filename.strip():
+        filename = "unnamed_file"
+    
+    return filename.strip()
+
+
 class IngestionService:
     def __init__(self):
         pass
@@ -33,7 +66,7 @@ class IngestionService:
         try:
             # Save file temporarily (use basename to avoid path issues)
             file_id = str(uuid.uuid4())
-            safe_filename = os.path.basename(file.filename)  # Strip any path separators
+            safe_filename = sanitize_filename(file.filename)
             file_path = os.path.join(settings.UPLOAD_DIR, safe_filename)
             
             with open(file_path, "wb") as buffer:
@@ -69,8 +102,8 @@ class IngestionService:
                 chunk_text = chunk_data.get("text", chunk_data) if isinstance(chunk_data, dict) else chunk_data
                 chunk_texts.append(chunk_text)
             
-            # OPTIMIZATION: Batch embed all chunks at once (3-6x faster than sequential)
-            vectors = embedding_service.embed_batch(chunk_texts)
+            # OPTIMIZATION: Batch embed all chunks at once (async, runs in thread pool)
+            vectors = await embedding_service.embed_batch_async(chunk_texts)
             
             # Prepare metadata for all chunks
             metadata_list = []
@@ -84,7 +117,7 @@ class IngestionService:
                 metadata_list.append(chunk_metadata)
             
             # Batch insert all vectors
-            vector_db.upsert_vectors(vectors, metadata_list)
+            await vector_db.upsert_vectors(vectors, metadata_list)
             
             return {
                 "file_id": file_id,
@@ -97,6 +130,67 @@ class IngestionService:
             
         except Exception as e:
             logger.error(f"Error processing file {file.filename}: {e}")
+            raise
+
+    async def process_file_batch(self, file: UploadFile, extra_metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Process a file for batch ingestion (save, extract, chunk) but DO NOT embed or upsert.
+        Returns the chunks and metadata for batch processing by the caller.
+        """
+        try:
+            # Save file temporarily
+            file_id = str(uuid.uuid4())
+            safe_filename = sanitize_filename(file.filename)
+            file_path = os.path.join(settings.UPLOAD_DIR, safe_filename)
+            
+            with open(file_path, "wb") as buffer:
+                content = await file.read()
+                buffer.write(content)
+            
+            logger.info(f"Saved file for batch: {safe_filename}")
+            
+            # Extract text
+            extractor = ExtractorFactory.get_extractor(file_path)
+            text, extracted_metadata = extractor.extract(file_path)
+            
+            if not text or not text.strip():
+                raise ExtractionError(f"No text could be extracted from {safe_filename}")
+            
+            # Chunk text
+            chunks = chunker.chunk_text(text)
+            
+            # Prepare metadata
+            metadata = extra_metadata or {}
+            metadata["filename"] = safe_filename
+            metadata["file_id"] = file_id
+            metadata["upload_date"] = time.time()
+            metadata["total_chunks"] = len(chunks)
+            
+            # Prepare chunks with metadata
+            chunks_with_metadata = []
+            for i, chunk_data in enumerate(chunks):
+                chunk_text = chunk_data.get("text", chunk_data) if isinstance(chunk_data, dict) else chunk_data
+                
+                chunk_metadata = {
+                    **metadata,
+                    "text": chunk_text,
+                    "chunk_index": i
+                    # document_id will be assigned by caller
+                }
+                chunks_with_metadata.append({
+                    "text": chunk_text,
+                    "metadata": chunk_metadata
+                })
+            
+            return {
+                "filename": safe_filename,
+                "file_id": file_id,
+                "chunks": chunks_with_metadata,
+                "chunks_count": len(chunks)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error processing file batch {file.filename}: {e}")
             raise
 
 # Global instance
