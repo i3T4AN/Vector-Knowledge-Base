@@ -8,6 +8,7 @@ from typing import Tuple, Dict, Any
 import pypdf
 import logging
 from .base import BaseExtractor
+from exceptions import ExtractionError
 
 logger = logging.getLogger(__name__)
 
@@ -37,4 +38,5 @@ class PDFExtractor(BaseExtractor):
             
         except Exception as e:
             logger.error(f"Error extracting PDF {file_path}: {str(e)}")
-            raise ValueError(f"Failed to extract PDF: {str(e)}")
+            raise ExtractionError(f"Failed to extract PDF: {str(e)}")
+
