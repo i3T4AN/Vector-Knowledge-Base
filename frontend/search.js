@@ -24,36 +24,58 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Enter') performSearch();
     });
 
-    // Clustering Button
+    // Clustering Button with Job Polling
     const clusterBtn = document.getElementById('clusterBtn');
     if (clusterBtn) {
         clusterBtn.addEventListener('click', async () => {
             clusterBtn.disabled = true;
             const originalText = clusterBtn.textContent;
-            clusterBtn.textContent = 'Clustering...';
+            clusterBtn.textContent = 'Starting...';
 
             try {
+                // Start the clustering job (returns immediately with job_id)
                 const response = await fetch(`${API_URL}/api/cluster`, {
                     method: 'POST'
                 });
 
-                if (!response.ok) throw new Error('Clustering failed');
+                if (!response.ok) throw new Error('Failed to start clustering');
 
-                const result = await response.json();
+                const jobInfo = await response.json();
+                const jobId = jobInfo.job_id;
+
+                showNotification('Clustering job started. Processing in background...', 'info');
+                clusterBtn.textContent = 'Clustering... 0%';
+
+                // Poll for job status
+                const result = await pollJobStatus(jobId, (progress) => {
+                    clusterBtn.textContent = `Clustering... ${progress}%`;
+                });
+
+                // Job completed - show results
+                if (result.error) {
+                    throw new Error(result.error);
+                }
+
+                const jobResult = result.result || {};
 
                 // Create a summary of cluster names if available
                 let clusterSummary = '';
-                if (result.cluster_names) {
-                    const names = Object.values(result.cluster_names)
+                if (jobResult.cluster_names) {
+                    const names = Object.values(jobResult.cluster_names)
                         .filter(n => n !== 'Uncategorized')
                         .slice(0, 3); // Show top 3
                     if (names.length > 0) {
-                        clusterSummary = `: "${names.join('", "')}"` + (Object.keys(result.cluster_names).length > 4 ? '...' : '');
+                        clusterSummary = `: "${names.join('", "')}"` + (Object.keys(jobResult.cluster_names).length > 4 ? '...' : '');
                     }
                 }
 
+                // Build notification message with fallbacks for undefined values
+                const totalChunks = jobResult.total_chunks ?? 'unknown';
+                const totalDocs = jobResult.total_documents ?? 'unknown';
+                const numClusters = jobResult.clusters ?? 'unknown';
+
                 showNotification(
-                    `Clustered ${result.total_chunks} chunks from ${result.total_documents} documents into ${result.clusters} clusters${clusterSummary}`,
+                    `Clustered ${totalChunks} chunks from ${totalDocs} documents into ${numClusters} clusters${clusterSummary}`,
                     'success'
                 );
 
@@ -75,6 +97,48 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    /**
+     * Poll a job status endpoint until completion or failure.
+     * @param {string} jobId - The job ID to poll
+     * @param {function} onProgress - Callback for progress updates (receives progress %)
+     * @returns {Promise<object>} - The final job result
+     */
+    async function pollJobStatus(jobId, onProgress) {
+        const pollInterval = 500; // Poll every 500ms
+        const maxPolls = 600; // Max 5 minutes (600 * 500ms)
+
+        for (let i = 0; i < maxPolls; i++) {
+            try {
+                const response = await fetch(`${API_URL}/api/jobs/${jobId}`);
+                if (!response.ok) throw new Error('Failed to get job status');
+
+                const job = await response.json();
+
+                // Update progress
+                if (onProgress && job.progress !== undefined) {
+                    onProgress(job.progress);
+                }
+
+                // Check if job is done
+                if (job.status === 'completed') {
+                    return job;
+                } else if (job.status === 'failed') {
+                    throw new Error(job.error || 'Job failed');
+                }
+
+                // Wait before next poll
+                await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+            } catch (err) {
+                console.error('Polling error:', err);
+                throw err;
+            }
+        }
+
+        throw new Error('Job timed out');
+    }
+
 
     // Populate Cluster Dropdown
     if (clusterFilter) {
