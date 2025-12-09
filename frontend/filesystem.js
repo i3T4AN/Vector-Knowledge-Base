@@ -61,25 +61,26 @@ if (typeof FileSystem === 'undefined') {
             container = newContainer;
 
             // Make the unsorted container a drop zone
-            // Passing 'unsorted' string to distinguish from null (Root)
-            this.makeDropZone(container, 'unsorted');
+            // Passing FOLDER_UNSORTED string to distinguish from null (Root)
+            this.makeDropZone(container, CONSTANTS.FOLDER_UNSORTED);
 
             if (this.unsortedFiles.length === 0) {
                 container.innerHTML = '<p style="color: var(--text-muted); font-size: 0.875rem;">All files are organized! <span class="purple-emoji">🎉</span></p>';
                 return;
             }
 
-            this.unsortedFiles.forEach(filename => {
+            this.unsortedFiles.forEach(file => {
                 const item = document.createElement('div');
                 item.className = 'unsorted-file-item';
                 item.draggable = true;
-                item.textContent = filename;
+                item.textContent = file.filename;
 
                 // Drag start
                 item.addEventListener('dragstart', (e) => {
                     e.dataTransfer.effectAllowed = 'move';
                     e.dataTransfer.setData('type', 'file');
-                    e.dataTransfer.setData('filename', filename);
+                    e.dataTransfer.setData('document_id', file.document_id);
+                    e.dataTransfer.setData('filename', file.filename);
                     this.draggedType = 'file';
                     item.classList.add('dragging');
                 });
@@ -91,7 +92,7 @@ if (typeof FileSystem === 'undefined') {
 
                 // Double-click to open file
                 item.addEventListener('dblclick', () => {
-                    this.openFileViewer(filename);
+                    this.openFileViewer(file.filename);
                 });
 
                 container.appendChild(item);
@@ -110,8 +111,8 @@ if (typeof FileSystem === 'undefined') {
             // Get subfolders of current folder
             const subfolders = this.folders.filter(f => f.parent_id === this.currentFolderId);
 
-            // Get files in current folder (handle null as "null" string from backend)
-            const currentFolderKey = this.currentFolderId === null ? 'null' : this.currentFolderId;
+            // Get files in current folder (handle null as FOLDER_NULL string from backend)
+            const currentFolderKey = this.currentFolderId === null ? CONSTANTS.FOLDER_NULL : this.currentFolderId;
             const filesInFolder = this.files[currentFolderKey] || [];
 
             // Render subfolders
@@ -126,8 +127,8 @@ if (typeof FileSystem === 'undefined') {
             });
 
             // Render files
-            filesInFolder.forEach(filename => {
-                const item = this.createFileElement(filename);
+            filesInFolder.forEach(file => {
+                const item = this.createFileElement(file);
                 grid.appendChild(item);
             });
 
@@ -193,21 +194,22 @@ if (typeof FileSystem === 'undefined') {
             return div;
         }
 
-        createFileElement(filename) {
+        createFileElement(file) {
             const div = document.createElement('div');
             div.className = 'fs-item draggable';
             div.draggable = true;
 
             div.innerHTML = `
             <div class="fs-item-icon"><span class="purple-emoji">📄</span></div>
-            <div class="fs-item-name">${filename}</div>
+            <div class="fs-item-name">${file.filename}</div>
         `;
 
             // Drag start
             div.addEventListener('dragstart', (e) => {
                 e.dataTransfer.effectAllowed = 'move';
                 e.dataTransfer.setData('type', 'file');
-                e.dataTransfer.setData('filename', filename);
+                e.dataTransfer.setData('document_id', file.document_id);
+                e.dataTransfer.setData('filename', file.filename);
                 this.draggedType = 'file';
                 div.classList.add('dragging');
             });
@@ -219,7 +221,7 @@ if (typeof FileSystem === 'undefined') {
 
             // Double-click to open file
             div.addEventListener('dblclick', () => {
-                this.openFileViewer(filename);
+                this.openFileViewer(file.filename);
             });
 
             return div;
@@ -230,7 +232,7 @@ if (typeof FileSystem === 'undefined') {
                 e.preventDefault();
 
                 // Prevent folders from being dropped into Unsorted
-                if (targetFolderId === 'unsorted' && this.draggedType === 'folder') {
+                if (targetFolderId === CONSTANTS.FOLDER_UNSORTED && this.draggedType === 'folder') {
                     e.dataTransfer.dropEffect = 'none';
                     return;
                 }
@@ -262,15 +264,16 @@ if (typeof FileSystem === 'undefined') {
                 }
 
                 // Prevent folders from being dropped into Unsorted
-                if (targetFolderId === 'unsorted' && this.draggedType === 'folder') {
+                if (targetFolderId === CONSTANTS.FOLDER_UNSORTED && this.draggedType === 'folder') {
                     return;
                 }
 
                 const type = e.dataTransfer.getData('type');
 
                 if (type === 'file') {
+                    const document_id = e.dataTransfer.getData('document_id');
                     const filename = e.dataTransfer.getData('filename');
-                    await this.moveFile(filename, targetFolderId);
+                    await this.moveFile(document_id, filename, targetFolderId);
                 } else if (type === 'folder') {
                     const folderId = e.dataTransfer.getData('folder_id');
                     await this.moveFolder(folderId, targetFolderId);
@@ -395,7 +398,7 @@ if (typeof FileSystem === 'undefined') {
             }
         }
 
-        async moveFile(filename, targetFolderId) {
+        async moveFile(document_id, filename, targetFolderId) {
             // Prevent duplicate moves from stacked event listeners
             if (this.isProcessingMove) {
                 console.log('Move already in progress, skipping duplicate');
@@ -408,7 +411,7 @@ if (typeof FileSystem === 'undefined') {
                 const response = await fetch(`${API_URL}/files/move`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filename, folder_id: targetFolderId })
+                    body: JSON.stringify({ document_id, filename, folder_id: targetFolderId })
                 });
 
                 if (!response.ok) {
