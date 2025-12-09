@@ -8,6 +8,7 @@ from typing import Tuple, Dict, Any
 import docx2txt
 import logging
 from .base import BaseExtractor
+from exceptions import ExtractionError
 
 logger = logging.getLogger(__name__)
 
@@ -22,4 +23,5 @@ class DocxExtractor(BaseExtractor):
             
         except Exception as e:
             logger.error(f"Error extracting DOCX {file_path}: {str(e)}")
-            raise ValueError(f"Failed to extract DOCX: {str(e)}")
+            raise ExtractionError(f"Failed to extract DOCX: {str(e)}")
+
