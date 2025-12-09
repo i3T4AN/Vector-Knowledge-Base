@@ -521,15 +521,7 @@ export class EmbeddingVisualizer {
     }
 
     highlightPoint(hit) {
-        // For now, just change cursor
         this.container.style.cursor = 'pointer';
-
-        // If it's an instanced mesh, we could change color
-        if (hit.object === this.corpusMesh && hit.instanceId !== undefined) {
-            // We could set a specific color for the highlighted instance
-            // But updating instance color requires re-uploading buffer which might be slow if frequent
-            // For now, simple cursor change is enough for MVP
-        }
     }
 
     resetHighlight() {
