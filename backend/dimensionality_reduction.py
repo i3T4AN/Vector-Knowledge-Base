@@ -67,8 +67,6 @@ class DimensionalityReducer:
         n_samples = X.shape[0]
         if n_samples < self.n_components:
             logger.warning(f"Not enough samples ({n_samples}) for {self.n_components} components. Padding with zeros.")
-            # In a real scenario, we might just return the first 3 dims or pad
-            # For visualization safety, we'll fit on what we have if possible, or just return truncated/padded
             if n_samples == 0:
                 return np.array([])
             
