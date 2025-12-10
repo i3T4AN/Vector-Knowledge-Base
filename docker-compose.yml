@@ -35,6 +35,10 @@ services:
     environment:
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
+      - MCP_ENABLED=${MCP_ENABLED:-true}
+      - MCP_PATH=${MCP_PATH:-/mcp}
+      - MCP_NAME=${MCP_NAME:-Vector Knowledge Base}
+      - MCP_AUTH_ENABLED=${MCP_AUTH_ENABLED:-false}
     depends_on:
       - qdrant
     restart: unless-stopped
