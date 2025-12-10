@@ -16,6 +16,7 @@ import os
 import shutil
 import numpy as np
 import uuid
+import time
 
 # Rate limiting
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -41,6 +42,7 @@ from exceptions import (
 from dimensionality_reduction import DimensionalityReducer
 from clustering import ClusteringService
 from jobs import create_job, update_job, get_job, list_jobs, JobStatus, JobType
+from mcp_server import setup_mcp_server
 
 # Configure logging
 logging.basicConfig(
@@ -79,6 +81,12 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing Qdrant collection...")
     await vector_db.ensure_collection()
     logger.info("Qdrant ready - startup complete")
+    
+    # Initialize MCP server (if enabled)
+    mcp = setup_mcp_server(app)
+    if mcp:
+        logger.info(f"MCP server ready at {settings.MCP_PATH}")
+    
     yield
     logger.info("Shutting down...")
 
@@ -263,8 +271,7 @@ async def delete_document(filename: str):
         await vector_db.delete_document("filename", filename)
         
         # 3. Remove from file system organization
-        # TODO: Update fs_db.remove_file to use document_id instead of filename
-        await fs_db.remove_file(filename)
+        await fs_db.remove_file_by_filename(filename)
         
         # Invalidate 3D cache
         invalidate_3d_cache()
@@ -991,6 +998,161 @@ async def export_data():
     except Exception as e:
         logger.error(f"Failed to export data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =======================================================================
+# MCP-ONLY ENDPOINTS
+# These endpoints are designed for AI agent (MCP) use only, not frontend.
+# =======================================================================
+
+class MCPDocumentRequest(BaseModel):
+    """Request model for MCP document creation"""
+    filename: str
+    content: str
+    folder_id: Optional[str] = None
+
+class MCPDocumentResponse(BaseModel):
+    """Response model for MCP document creation"""
+    status: str
+    document_id: str
+    filename: str
+    chunks_created: int
+    message: str
+
+# Allowed extensions for MCP text document creation
+MCP_ALLOWED_EXTENSIONS = {".txt", ".md", ".json"}
+MCP_MAX_CONTENT_SIZE = 102400  # 100KB
+
+@app.post("/mcp/create-document", response_model=MCPDocumentResponse)
+async def mcp_create_document(request: MCPDocumentRequest):
+    """
+    Create a text document from string content.
+    
+    MCP-ONLY endpoint - designed for AI agent use, not frontend.
+    Accepts plain text/markdown content and processes it through the 
+    embedding pipeline without requiring binary file uploads.
+    """
+    from chunker import chunker
+    
+    filename = request.filename.strip()
+    content = request.content
+    folder_id = request.folder_id
+    
+    # Validation: filename extension
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in MCP_ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid file extension. Allowed: {', '.join(MCP_ALLOWED_EXTENSIONS)}"
+        )
+    
+    # Validation: filename length
+    if len(filename) > 255:
+        raise HTTPException(status_code=400, detail="Filename too long (max 255 characters)")
+    
+    # Validation: content not empty
+    if not content or not content.strip():
+        raise HTTPException(status_code=400, detail="Content cannot be empty")
+    
+    # Validation: content size
+    if len(content) > MCP_MAX_CONTENT_SIZE:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Content too large. Maximum size: {MCP_MAX_CONTENT_SIZE // 1024}KB"
+        )
+    
+    # Validation: folder exists if provided
+    if folder_id:
+        folders = await fs_db.get_all_folders()
+        folder_ids = {f['id'] for f in folders}
+        if folder_id not in folder_ids:
+            raise HTTPException(status_code=400, detail=f"Folder {folder_id} not found")
+    
+    logger.info(f"MCP creating document: {filename}")
+    
+    try:
+        # Generate document ID
+        document_id = str(uuid.uuid4())
+        upload_timestamp = time.time()  # Unix timestamp (float)
+        
+        # Write physical file to uploads directory
+        file_path = os.path.join(settings.UPLOAD_DIR, filename)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        
+        # Prepare metadata
+        metadata = {
+            "filename": filename,
+            "document_id": document_id,
+            "source": "mcp",  # Mark as MCP-created
+            "upload_date": upload_timestamp,
+        }
+        
+        # Chunk the content
+        chunks = chunker.chunk_text(content, metadata)
+        
+        if not chunks:
+            raise HTTPException(status_code=400, detail="Could not process content into chunks")
+        
+        # Extract just the text for embedding
+        chunk_texts = [c['text'] for c in chunks]
+        
+        # Generate embeddings
+        embeddings = await embedding_service.embed_batch_async(chunk_texts)
+        
+        # Prepare points for Qdrant
+        points = []
+        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+            point_id = str(uuid.uuid4())
+            payload = {
+                "text": chunk['text'],
+                "filename": filename,
+                "document_id": document_id,
+                "chunk_index": i,
+                "total_chunks": len(chunks),
+                "source": "mcp",
+                "upload_date": metadata["upload_date"],
+            }
+            points.append({
+                "id": point_id,
+                "vector": embedding.tolist() if hasattr(embedding, 'tolist') else embedding,
+                "payload": payload
+            })
+        
+        # Store in Qdrant
+        await vector_db.upsert_batch(points)
+        
+        # Register in document registry
+        document_registry.register(document_id, {
+            "filename": filename,
+            "upload_date": metadata["upload_date"],
+            "total_chunks": len(chunks),
+            "source": "mcp",
+        })
+        
+        # Assign to folder if specified
+        if folder_id:
+            await fs_db.move_file_to_folder(document_id, filename, folder_id)
+        
+        # Invalidate 3D cache since we added new data
+        invalidate_3d_cache()
+        
+        logger.info(f"MCP document created: {filename} ({len(chunks)} chunks)")
+        
+        return MCPDocumentResponse(
+            status="success",
+            document_id=document_id,
+            filename=filename,
+            chunks_created=len(chunks),
+            message="Document created via MCP"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"MCP document creation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create document: {str(e)}")
+
 
 @app.delete("/reset")
 @limiter.limit(settings.RATE_LIMIT_RESET)

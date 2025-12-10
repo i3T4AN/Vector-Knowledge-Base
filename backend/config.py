@@ -91,6 +91,24 @@ class Settings(BaseSettings):
         default="60/minute",
         description="Rate limit for reset endpoint (stricter for safety)"
     )
+    
+    # MCP Server Configuration (Model Context Protocol for AI agents)
+    MCP_ENABLED: bool = Field(
+        default=True,
+        description="Enable/disable the MCP server endpoint"
+    )
+    MCP_PATH: str = Field(
+        default="/mcp",
+        description="URL path for the MCP server endpoint"
+    )
+    MCP_NAME: str = Field(
+        default="Vector Knowledge Base",
+        description="Display name for the MCP server"
+    )
+    MCP_AUTH_ENABLED: bool = Field(
+        default=False,
+        description="Enable OAuth authentication for MCP (recommended for production)"
+    )
 
     class Config:
         env_file = "../.env"  # Look in project root, not backend/

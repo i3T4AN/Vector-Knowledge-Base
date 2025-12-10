@@ -169,6 +169,13 @@ class FileSystemDB:
             await db.commit()
         logger.info(f"Removed document {document_id} from file system")
 
+    async def remove_file_by_filename(self, filename: str):
+        """Remove a file from the file system by filename."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM file_folders WHERE filename = ?", (filename,))
+            await db.commit()
+        logger.info(f"Removed file {filename} from file system")
+
     async def get_or_create_folder_path(self, path_components: List[str]) -> str:
         """
         Get or create a folder path from a list of folder names.
