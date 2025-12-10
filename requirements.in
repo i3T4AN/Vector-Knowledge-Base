@@ -23,3 +23,4 @@ openpyxl>=3.1.0
 python-pptx>=0.6.21
 aiosqlite>=0.19.0
 slowapi>=0.1.9
+fastapi-mcp>=0.1.0
