@@ -207,6 +207,7 @@ The backend will:
 4. Click **Search** to see ranked results with similarity scores
 
 ![Search Results](screenshots/search-results.png)
+
 *Semantic search results showing similarity scores and relevant text snippets*
 
 ### Auto-Clustering Documents
@@ -222,6 +223,7 @@ The backend will:
 5. Use the **Cluster** filter to search within specific document groups (shown as "ID: Cluster Name")
 
 ![3D Visualization with Clusters](screenshots/3d-visualization.png)
+
 *Interactive 3D embedding space showing document clusters and search results with cluster information*
 
 ### Organizing Files
@@ -234,6 +236,7 @@ Use the **Files** page (`files.html`) to:
 - **Double-click any file** to open it in the built-in file viewer
 
 ![File Organization](screenshots/files-page.png)
+
 *File management interface with folder hierarchy and drag-and-drop organization*
 
 ### Data Management
@@ -659,6 +662,7 @@ Once connected, just ask Claude naturally:
 | "Create a summary document with my notes" | Create text document |
 
 ![Claude Desktop MCP Demo](screenshots/claude-mcp-demo.png)
+
 *Claude Desktop searching and listing documents via MCP integration*
 
 ### MCP Limitations
