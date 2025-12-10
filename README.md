@@ -7,11 +7,11 @@
 [![Qdrant](https://img.shields.io/badge/Qdrant-Vector_Database-DC244C?style=flat-square)](https://qdrant.tech)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-[Features](#features) • [Quick Start](#quick-start) • [Usage](#usage) • [Architecture](#architecture) • [API Reference](#api-reference)
+[Features](#features) • [Quick Start](#quick-start) • [Usage](#usage) • [Architecture](#architecture) • [API Reference](#api-reference) • [Configuration](#configuration) • [MCP Integration](#mcp-integration-ai-agents) • [Troubleshooting](#troubleshooting)
 
 ---
 
-**Vector Knowledge Base** is a vector database application that transforms your documents into a searchable knowledge base using semantic search. Upload PDFs, Word documents, and code files, then search using natural language to find exactly what you need.
+**Vector Knowledge Base** is a vector database application that transforms your documents into a searchable knowledge base using semantic search. Upload PDFs, Word documents, PowerPoint, Excel, images (with OCR), and code files, then search using natural language to find exactly what you need.
 
 ## Features
 
@@ -31,6 +31,7 @@
 - **Vector Embeddings** - Powered by SentenceTransformers (all-mpnet-base-v2, 768-dimensional embeddings)
 - **High-Performance Search** - Qdrant vector database for sub-50ms search queries
 - **O(1) Document Listing** - JSON-based document registry for instant document listing at any scale
+- **AI Agent Integration (MCP)** - Connect Claude Desktop or other AI agents to search, create, and manage documents via Model Context Protocol
 
 ![Main Search Interface](screenshots/search-interface.png)
 *Clean, modern dark-mode interface with semantic search and filtering options*
@@ -40,7 +41,7 @@
 ### Prerequisites
 
 - Docker and Docker Compose (recommended)
-- **OR** Python 3.11+ and Docker (for manual setup)
+- **OR** Python 3.11+ and Docker (for Performance Mode or Manual Installation)
 
 ### Option 1: Docker Deployment (Recommended)
 
@@ -81,51 +82,7 @@ docker-compose down
 docker-compose up -d --build
 ```
 
-### Option 2: Manual Installation
-
-For development or if you prefer not to use Docker:
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/i3T4AN/Vector-Knowledge-Base.git
-   cd Vector-Knowledge-Base
-   ```
-
-2. **Start Qdrant with Docker**
-   ```bash
-   docker run -d -p 6333:6333 -v ./qdrant_storage:/qdrant/storage:z qdrant/qdrant
-   ```
-
-3. **Set up Python environment**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   python -m pip install -r requirements.txt
-   ```
-
-4. **Start the backend server**
-   ```bash
-   cd backend
-   python -m uvicorn main:app --reload --port 8000 --host 0.0.0.0
-   ```
-
-5. **Start the frontend server**
-   ```bash
-   cd frontend
-   python -m http.server 8001
-   ```
-   
-   > [!NOTE]
-   > On Mac, use `python3` instead of `python` if the command is not found.
-
-6. **Open your browser**
-   
-   Navigate to `http://localhost:8001/index.html`
-
-> [!TIP]
-> On first run, the embedding model (~400MB) will be downloaded automatically. This may take a few minutes.
-
-### Option 3: Performance Mode (GPU Acceleration)
+### Option 2: Performance Mode (GPU Acceleration)
 
 For **significantly faster** embedding generation, run the backend natively with GPU support:
 
@@ -170,7 +127,52 @@ The script will:
 | Mode | Command | GPU | Speed | Use Case |
 |------|---------|-----|-------|----------|
 | Full Docker | `docker-compose up -d` | ❌ | ~18s/batch | Production, cross-platform |
-| Native Backend | `./scripts/start-backend-native.sh` | ✅ | ~1-3s/batch | Development, large uploads |
+| Native (Mac/Linux) | `./scripts/start-backend-native.sh` | ✅ | ~1-3s/batch | Development, large uploads |
+| Native (Windows) | `scripts\start-backend-native.bat` | ✅ | ~1-3s/batch | Development, large uploads |
+
+### Option 3: Manual Installation (Not Recommended)
+
+For development or if you prefer not to use Docker for the backend:
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/i3T4AN/Vector-Knowledge-Base.git
+   cd Vector-Knowledge-Base
+   ```
+
+2. **Start Qdrant with Docker**
+   ```bash
+   docker run -d -p 6333:6333 -v ./qdrant_storage:/qdrant/storage:z qdrant/qdrant
+   ```
+
+3. **Set up Python environment**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   python -m pip install -r requirements.txt
+   ```
+
+4. **Start the backend server**
+   ```bash
+   cd backend
+   python -m uvicorn main:app --reload --port 8000 --host 0.0.0.0
+   ```
+
+5. **Start the frontend server**
+   ```bash
+   cd frontend
+   python -m http.server 8001
+   ```
+   
+   > [!NOTE]
+   > On Mac, use `python3` instead of `python` if the command is not found.
+
+6. **Open your browser**
+   
+   Navigate to `http://localhost:8001/index.html`
+
+> [!TIP]
+> On first run, the embedding model (~400MB) will be downloaded automatically. This may take a few minutes.
 
 ## Usage
 
@@ -210,7 +212,7 @@ The backend will:
 ### Auto-Clustering Documents
 
 1. Navigate to the **Search** page (`index.html`)
-2. Upload several documents first (at least 2 documents required)
+2. Upload several documents first (clustering works best with 5+ documents)
 3. Click **Auto-Cluster Documents**
 4. The system will:
    - Automatically determine the optimal number of clusters using HDBSCAN
@@ -266,10 +268,10 @@ In the **My Documents** tab, you can:
 └──────┬──────┘
        │ HTTP
        ▼
-┌─────────────┐
-│   Backend   │  FastAPI + Python
-│  (Port 8000)│  
-└──────┬──────┘
+┌─────────────┐     ┌─────────────┐
+│   Backend   │ ←── │  MCP Server │  AI Agent Integration
+│  (Port 8000)│     │  (/mcp)     │  (Claude Desktop, etc.)
+└──────┬──────┘     └─────────────┘
        │
    ┌───┴────┬────────────┐
    ▼        ▼            ▼
@@ -291,7 +293,7 @@ In the **My Documents** tab, you can:
 
 **How Chunks Relate to Documents:**
 - Each uploaded file is processed by the appropriate **Extractor** to extract raw text
-- The **Chunker** splits the text into smaller pieces (default: 500 characters with 50-char overlap)
+- The **Chunker** splits the text into smaller pieces (default: 500 tokens with 50-token overlap)
 - Each chunk is converted to a 768-dimensional vector by the **Embedder** (SentenceTransformers)
 - Chunks are stored in **Qdrant** with metadata linking them back to the original document
 - A single document may produce 10-100+ chunks depending on its length
@@ -304,7 +306,8 @@ In the **My Documents** tab, you can:
 - `documents.html` - Document upload and management
 - `files.html` - File organization with drag-and-drop
 
-Pages communicate with the backend API and share a modular CSS architecture
+Pages communicate with the backend API and share a modular CSS architecture.
+
 ### Tech Stack
 
 **Backend:**
@@ -407,7 +410,7 @@ Response: [
   {
     "filename": "doc.pdf",
     "category": "CS101",
-    "upload_date": "2024-01-15"
+    "upload_date": 1705320000.0
   }
 ]
 ```
@@ -453,6 +456,83 @@ Response: {
   "clusters": [0, 1, 2, 3, 4]
 }
 # Returns list of all cluster IDs currently assigned to documents
+```
+
+### 3D Visualization
+
+```http
+GET /api/embeddings/3d
+
+Response: {
+  "coords": [[x, y, z], ...],  // PCA-reduced 3D coordinates
+  "point_ids": ["uuid1", ...],
+  "metadata": [{"filename": "doc.pdf", ...}, ...]
+}
+# Returns 3D coordinates for all document chunks (cached for performance)
+```
+
+```http
+POST /api/embeddings/3d/query
+Content-Type: application/json
+
+Body: {
+  "query": "machine learning",
+  "k": 5  // Number of nearest neighbors
+}
+
+Response: {
+  "query_coords": [x, y, z],
+  "neighbors": [{"id": "uuid", "coords": [x, y, z], "score": 0.89}, ...]
+}
+# Transforms a search query to 3D space and finds nearest neighbors
+```
+
+### Batch Upload
+
+```http
+POST /upload-batch
+Content-Type: multipart/form-data
+
+Parameters:
+- files: File[] (required) - Multiple files to upload
+- category: string (required)
+- tags: string[] (optional)
+- relative_path: string (optional) - Shared folder path for all files
+
+Response: {
+  "results": [...],  // Array of upload results
+  "total": 10,
+  "successful": 10,
+  "failed": 0
+}
+# Optimized batch upload for files sharing the same folder
+```
+
+### Job Management
+
+```http
+GET /api/jobs
+
+Response: {
+  "jobs": [
+    {"id": "uuid", "type": "clustering", "status": "completed", "progress": 100}
+  ]
+}
+# List all background jobs (clustering, etc.)
+```
+
+```http
+GET /api/jobs/{job_id}
+
+Response: {
+  "id": "uuid",
+  "type": "clustering",
+  "status": "running",
+  "progress": 45,
+  "created_at": "2024-01-15T10:30:00",
+  "message": "Processing..."
+}
+# Get status of a specific background job
 ```
 
 ### Data Management
@@ -511,6 +591,155 @@ RATE_LIMIT_RESET=60/minute     # Default: 60/minute (stricter for destructive op
 > [!NOTE]
 > When using Docker Compose, `QDRANT_HOST` is automatically set to `qdrant` (the service name) in `docker-compose.yml`. You only need a `.env` file for manual installations or to override defaults.
 
+## MCP Integration (AI Agents)
+
+The Vector Knowledge Base includes built-in support for the **Model Context Protocol (MCP)**, allowing AI agents like Claude Desktop to interact with your knowledge base directly.
+
+### Prerequisites
+
+- **Node.js 18+** - Required for the MCP bridge
+  - Download from [nodejs.org](https://nodejs.org/) (LTS recommended)
+  - Or on macOS: `brew install node`
+
+### Setting Up Claude Desktop
+
+1. **Ensure the backend is running**
+   ```bash
+   # Docker mode
+   docker-compose up -d
+   
+   # OR Native mode - macOS/Linux
+   ./scripts/start-backend-native.sh
+   
+   # OR Native mode - Windows
+   scripts\start-backend-native.bat
+   ```
+
+2. **Locate the Claude Desktop config file**
+   - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+   - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+   
+   > [!TIP]
+   > In Claude Desktop: **Claude → Settings → Developer → Edit Config**
+
+3. **Add the MCP server configuration**
+   
+   Edit `claude_desktop_config.json`:
+   ```json
+   {
+     "mcpServers": {
+       "vector-knowledge-base": {
+         "command": "npx",
+         "args": ["-y", "mcp-remote", "http://localhost:8000/mcp"]
+       }
+     }
+   }
+   ```
+   
+   > [!NOTE]
+   > On macOS, if `npx` is not in PATH, use the full path: `/usr/local/bin/npx`
+
+4. **Restart Claude Desktop**
+   - Fully quit (Cmd+Q / Alt+F4), don't just close the window
+   - Reopen Claude Desktop
+   - The MCP tools should now be available
+
+### Using the Knowledge Base from Claude
+
+Once connected, just ask Claude naturally:
+
+| Example Prompt | Action |
+|----------------|--------|
+| "Search my knowledge base for machine learning" | Semantic search |
+| "List all documents in my knowledge base" | List documents |
+| "Show me the document clusters" | Get clusters |
+| "Run auto-clustering on my documents" | Cluster documents |
+| "Check if my vector database is healthy" | Health check |
+| "Get 3D embedding data for cluster 1" | Visualization data |
+| "Create a summary document with my notes" | Create text document |
+
+![Claude Desktop MCP Demo](screenshots/claude-mcp-demo.png)
+*Claude Desktop searching and listing documents via MCP integration*
+
+### MCP Limitations
+
+> [!IMPORTANT]
+> Claude Desktop has limitations when interacting with the knowledge base via MCP.
+
+**What Claude CAN do:**
+- ✅ Search documents semantically
+- ✅ List all documents and folders
+- ✅ Delete documents by filename
+- ✅ Run clustering and get cluster info
+- ✅ Get 3D embedding coordinates for visualization
+- ✅ Check system health
+- ✅ **Create text documents** (.txt, .md, .json) - Claude can generate content and save it to your knowledge base
+
+**What Claude CANNOT do:**
+- ❌ **Upload binary files** - PDFs, Word docs, images require multipart uploads which MCP cannot provide (at least from what I found with Claude Desktop)
+- ❌ **Access your filesystem** - Claude cannot read files from paths like `/Users/.../file.pdf`
+
+**To upload files**, use one of these methods instead:
+1. **Web interface** at `http://localhost:8001/documents.html`
+2. **curl command**:
+   ```bash
+   curl -X POST http://localhost:8000/upload \
+     -F "file=@/path/to/document.pdf" \
+     -F "category=my-category"
+   ```
+
+### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `health_check` | Check if the API is running |
+| `get_allowed_extensions` | Get list of supported file types |
+| `search_documents` | Semantic search across all documents |
+| `list_documents` | List all uploaded documents |
+| `delete_document` | Delete a document by filename |
+| `get_folders` | List folder structure |
+| `create_folder` | Create a new folder |
+| `update_folder` | Rename or move a folder |
+| `delete_folder` | Delete an empty folder |
+| `move_file` | Move file to folder |
+| `get_unsorted_files` | List files not in any folder |
+| `get_files_in_folders` | Get file-to-folder mappings |
+| `cluster_documents` | Run auto-clustering |
+| `get_clusters` | Get cluster information |
+| `get_embeddings_3d` | Get 3D visualization coordinates |
+| `transform_query_3d` | Project query into 3D space |
+| `get_job_status` | Check background job progress |
+| `mcp_create_document` | Create text documents (.txt, .md, .json) |
+
+> [!TIP]
+> Claude can create searchable text documents using `mcp_create_document`. Ask it to "create a summary", "write notes", or "save a document" and it will add the content to your knowledge base.
+
+### MCP Configuration
+
+MCP settings are configured in [config.py](backend/config.py#L95-L111) (not in `.env`):
+
+```env
+MCP_ENABLED=true                    # Enable/disable MCP endpoint
+MCP_PATH=/mcp                       # URL path for MCP server
+MCP_NAME=Vector Knowledge Base      # Display name
+MCP_AUTH_ENABLED=false              # Enable OAuth (production)
+```
+
+### Troubleshooting MCP
+
+**"Server disconnected" error in Claude Desktop:**
+1. Ensure the backend is running: `curl http://localhost:8000/health`
+2. Check that Node.js is installed: `node --version`
+3. Try the full path to npx: `/usr/local/bin/npx`
+
+**MCP tools not appearing:**
+1. Fully quit and reopen Claude Desktop
+2. Check the Claude Desktop logs for errors
+3. Verify the config JSON is valid (no trailing commas)
+
+> [!CAUTION]
+> MCP provides AI agents with full access to your knowledge base. In production environments, enable `MCP_AUTH_ENABLED=true` for OAuth protection.
+
 ## Troubleshooting
 
 ### Qdrant Connection Error
@@ -541,7 +770,7 @@ pip install --upgrade sentence-transformers huggingface-hub
 ### File Upload Fails
 
 Check supported file types:
-- Documents: `.pdf`, `.docx`, `.pptx`, `.xlsx`, `.csv`, `.txt`, `.md`
+- Documents: `.pdf`, `.docx`, `.pptx`, `.ppt`, `.xlsx`, `.csv`, `.txt`, `.md`
 - Images: `.jpg`, `.jpeg`, `.png`, `.webp` (OCR-processed)
 - Code: `.py`, `.js`, `.java`, `.cpp`, `.html`, `.css`, `.json`, `.xml`, `.yaml`, `.yml`, `.cs`
 
@@ -597,6 +826,7 @@ Vector-Knowledge-Base/
 │   ├── jobs.py           # Background task tracking
 │   ├── config.py
 │   ├── constants.py      # Shared constants
+│   ├── mcp_server.py     # MCP server integration
 │   └── exceptions.py
 ├── frontend/
 │   ├── css/
@@ -613,6 +843,7 @@ Vector-Knowledge-Base/
 │   ├── documents.html
 │   ├── files.html
 │   ├── config.js
+│   ├── constants.js
 │   ├── search.js
 │   ├── upload.js
 │   ├── documents.js
