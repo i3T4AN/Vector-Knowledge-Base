@@ -7,7 +7,7 @@
 [![Qdrant](https://img.shields.io/badge/Qdrant-Vector_Database-DC244C?style=flat-square)](https://qdrant.tech)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-[Features](#features) • [Quick Start](#quick-start) • [Usage](#usage) • [Architecture](#architecture) • [API Reference](#api-reference) • [Configuration](#configuration) • [MCP Integration](#mcp-integration-ai-agents) • [Troubleshooting](#troubleshooting)
+[Features](#features) • [Quick Start](#quick-start) • [Usage](#usage) • [Architecture](#architecture) • [API Reference](#api-reference) • [Configuration](#configuration) • [MCP Integration](#mcp-integration-ai-agents) • [Troubleshooting](#troubleshooting) • [Full Technical Writeup](Docs/Vector_Knowledge_Base_Technical_Report.pdf)
 
 ---
 
@@ -858,6 +858,8 @@ Vector-Knowledge-Base/
 │   ├── start-backend-native.sh   # GPU mode startup (Unix)
 │   └── start-backend-native.bat  # GPU mode startup (Windows)
 ├── screenshots/
+├── Docs/
+│   └── Vector_Knowledge_Base_Technical_Report.pdf  # Full technical documentation
 ├── qdrant_storage/       # Created at runtime (gitignored)
 ├── uploads/              # Created at runtime by Docker (gitignored)
 ├── backend_db/           # Created at runtime (gitignored)
