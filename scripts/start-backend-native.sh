@@ -83,6 +83,16 @@ export QDRANT_PORT="6333"
 echo ""
 echo -e "${GREEN}Starting backend server on http://localhost:$PORT${NC}"
 echo "Press Ctrl+C to stop"
+
+# Display MCP status
+echo ""
+echo "MCP Server Configuration:"
+if [ "${MCP_ENABLED:-true}" = "true" ]; then
+    echo -e "  ${GREEN}MCP Endpoint: http://localhost:$PORT${MCP_PATH:-/mcp}${NC}"
+    echo "  Connect Claude Desktop or other MCP clients to this URL"
+else
+    echo -e "  ${YELLOW}MCP Server: Disabled${NC}"
+fi
 echo ""
 
 # Change to backend directory and start
