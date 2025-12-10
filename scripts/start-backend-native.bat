@@ -63,6 +63,18 @@ SET QDRANT_PORT=6333
 echo.
 echo Starting backend server on http://localhost:%PORT%
 echo Press Ctrl+C to stop
+
+REM Display MCP status
+echo.
+echo MCP Server Configuration:
+if "%MCP_ENABLED%"=="" SET MCP_ENABLED=true
+if "%MCP_PATH%"=="" SET MCP_PATH=/mcp
+if "%MCP_ENABLED%"=="true" (
+    echo   MCP Endpoint: http://localhost:%PORT%%MCP_PATH%
+    echo   Connect Claude Desktop or other MCP clients to this URL
+) else (
+    echo   MCP Server: Disabled
+)
 echo.
 
 REM Change to backend directory and start
