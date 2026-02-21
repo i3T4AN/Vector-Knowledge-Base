@@ -47,10 +47,17 @@ class FileSystemDB:
             CREATE TABLE IF NOT EXISTS file_folders (
                 document_id TEXT PRIMARY KEY,
                 filename TEXT NOT NULL,
+                storage_filename TEXT,
                 folder_id TEXT,
                 FOREIGN KEY (folder_id) REFERENCES folders(id) ON DELETE SET NULL
             )
         """)
+
+        # Backwards-compatible migration for existing databases
+        cursor.execute("PRAGMA table_info(file_folders)")
+        columns = {row[1] for row in cursor.fetchall()}
+        if "storage_filename" not in columns:
+            cursor.execute("ALTER TABLE file_folders ADD COLUMN storage_filename TEXT")
         
         conn.commit()
         conn.close()
@@ -107,7 +114,7 @@ class FileSystemDB:
             await db.commit()
         logger.info(f"Deleted folder ID: {folder_id}")
     
-    async def move_file_to_folder(self, document_id: str, filename: str, folder_id: Optional[str]):
+    async def move_file_to_folder(self, document_id: str, filename: str, folder_id: Optional[str], storage_filename: Optional[str] = None):
         """Assign a file to a folder. folder_id='unsorted' removes mapping. None=Root."""
         async with aiosqlite.connect(self.db_path) as db:
             if folder_id == 'unsorted':
@@ -120,14 +127,20 @@ class FileSystemDB:
                     exists = await cursor.fetchone()
                 
                 if exists:
-                    await db.execute(
-                        "UPDATE file_folders SET folder_id = ?, filename = ? WHERE document_id = ?",
-                        (folder_id, filename, document_id)
-                    )
+                    if storage_filename is None:
+                        await db.execute(
+                            "UPDATE file_folders SET folder_id = ?, filename = ? WHERE document_id = ?",
+                            (folder_id, filename, document_id)
+                        )
+                    else:
+                        await db.execute(
+                            "UPDATE file_folders SET folder_id = ?, filename = ?, storage_filename = ? WHERE document_id = ?",
+                            (folder_id, filename, storage_filename, document_id)
+                        )
                 else:
                     await db.execute(
-                        "INSERT INTO file_folders (document_id, filename, folder_id) VALUES (?, ?, ?)",
-                        (document_id, filename, folder_id)
+                        "INSERT INTO file_folders (document_id, filename, storage_filename, folder_id) VALUES (?, ?, ?, ?)",
+                        (document_id, filename, storage_filename, folder_id)
                     )
                 logger.info(f"Moved {filename} (doc:{document_id}) to folder {folder_id}")
             await db.commit()
@@ -135,16 +148,20 @@ class FileSystemDB:
     async def get_files_in_folders(self) -> Dict[str, List[Dict]]:
         """Get a mapping of folder_id -> [{document_id, filename}, ...]."""
         async with aiosqlite.connect(self.db_path) as db:
-            async with db.execute("SELECT document_id, filename, folder_id FROM file_folders") as cursor:
+            async with db.execute("SELECT document_id, filename, storage_filename, folder_id FROM file_folders") as cursor:
                 rows = await cursor.fetchall()
         
         # Build mapping
         result = {}
-        for document_id, filename, folder_id in rows:
+        for document_id, filename, storage_filename, folder_id in rows:
             key = str(folder_id) if folder_id is not None else FOLDER_NULL
             if key not in result:
                 result[key] = []
-            result[key].append({"document_id": document_id, "filename": filename})
+            result[key].append({
+                "document_id": document_id,
+                "filename": filename,
+                "storage_filename": storage_filename
+            })
         
         return result
     
@@ -175,6 +192,28 @@ class FileSystemDB:
             await db.execute("DELETE FROM file_folders WHERE filename = ?", (filename,))
             await db.commit()
         logger.info(f"Removed file {filename} from file system")
+
+    async def get_file_mapping_by_document_id(self, document_id: str) -> Optional[Dict]:
+        """Get file mapping record for a document ID."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT document_id, filename, storage_filename, folder_id FROM file_folders WHERE document_id = ?",
+                (document_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                return dict(row) if row else None
+
+    async def get_file_mappings_by_filename(self, filename: str) -> List[Dict]:
+        """Get all mapping records for a display filename."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT document_id, filename, storage_filename, folder_id FROM file_folders WHERE filename = ?",
+                (filename,)
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
 
     async def get_or_create_folder_path(self, path_components: List[str]) -> str:
         """

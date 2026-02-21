@@ -92,7 +92,7 @@ if (typeof FileSystem === 'undefined') {
 
                 // Double-click to open file
                 item.addEventListener('dblclick', () => {
-                    this.openFileViewer(file.filename);
+                    this.openFileViewer(file.filename, file.document_id);
                 });
 
                 container.appendChild(item);
@@ -221,7 +221,7 @@ if (typeof FileSystem === 'undefined') {
 
             // Double-click to open file
             div.addEventListener('dblclick', () => {
-                this.openFileViewer(file.filename);
+                this.openFileViewer(file.filename, file.document_id);
             });
 
             return div;
@@ -497,14 +497,15 @@ if (typeof FileSystem === 'undefined') {
                 window.notifications.error(`Failed to delete folder: ${error.message}`);
             }
         }
-        openFileViewer(filename) {
+        openFileViewer(filename, documentId = null) {
             const modal = document.getElementById('fileViewerModal');
             const title = document.getElementById('fileViewerTitle');
             const frame = document.getElementById('fileViewerFrame');
 
             if (modal && title && frame) {
                 title.textContent = filename;
-                frame.src = `${API_URL}/files/content/${encodeURIComponent(filename)}`;
+                const query = documentId ? `?document_id=${encodeURIComponent(documentId)}` : '';
+                frame.src = `${API_URL}/files/content/${encodeURIComponent(filename)}${query}`;
                 modal.style.display = 'flex';
             }
         }

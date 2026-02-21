@@ -55,6 +55,13 @@ def sanitize_filename(filename: str) -> str:
     return filename.strip()
 
 
+def generate_storage_filename(safe_filename: str) -> str:
+    """
+    Generate a unique on-disk filename to prevent collisions.
+    """
+    return f"{uuid.uuid4()}__{safe_filename}"
+
+
 class IngestionService:
     def __init__(self):
         pass
@@ -67,7 +74,8 @@ class IngestionService:
             # Save file temporarily (use basename to avoid path issues)
             file_id = str(uuid.uuid4())
             safe_filename = sanitize_filename(file.filename)
-            file_path = os.path.join(settings.UPLOAD_DIR, safe_filename)
+            storage_filename = generate_storage_filename(safe_filename)
+            file_path = os.path.join(settings.UPLOAD_DIR, storage_filename)
             
             with open(file_path, "wb") as buffer:
                 content = await file.read()
@@ -89,6 +97,7 @@ class IngestionService:
             # Prepare metadata
             metadata = extra_metadata or {}
             metadata["filename"] = safe_filename  # Use safe_filename instead of file.filename
+            metadata["storage_filename"] = storage_filename
             metadata["file_id"] = file_id
             metadata["upload_date"] = time.time()
             metadata["total_chunks"] = len(chunks)
@@ -122,6 +131,7 @@ class IngestionService:
             return {
                 "file_id": file_id,
                 "filename": safe_filename,  # Use safe_filename here too
+                "storage_filename": storage_filename,
                 "status": "success",
                 "chunks_count": len(chunks),
                 "document_id": document_id,
@@ -141,7 +151,8 @@ class IngestionService:
             # Save file temporarily
             file_id = str(uuid.uuid4())
             safe_filename = sanitize_filename(file.filename)
-            file_path = os.path.join(settings.UPLOAD_DIR, safe_filename)
+            storage_filename = generate_storage_filename(safe_filename)
+            file_path = os.path.join(settings.UPLOAD_DIR, storage_filename)
             
             with open(file_path, "wb") as buffer:
                 content = await file.read()
@@ -162,6 +173,7 @@ class IngestionService:
             # Prepare metadata
             metadata = extra_metadata or {}
             metadata["filename"] = safe_filename
+            metadata["storage_filename"] = storage_filename
             metadata["file_id"] = file_id
             metadata["upload_date"] = time.time()
             metadata["total_chunks"] = len(chunks)
@@ -184,6 +196,7 @@ class IngestionService:
             
             return {
                 "filename": safe_filename,
+                "storage_filename": storage_filename,
                 "file_id": file_id,
                 "chunks": chunks_with_metadata,
                 "chunks_count": len(chunks)

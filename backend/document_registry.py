@@ -72,6 +72,7 @@ class DocumentRegistry:
             
             self._registry[document_id] = {
                 "filename": metadata.get("filename"),
+                "storage_filename": metadata.get("storage_filename"),
                 "upload_date": metadata.get("upload_date", time.time()),
                 "total_chunks": metadata.get("total_chunks", 1),
                 "folder_path": metadata.get("folder_path"),
@@ -133,6 +134,7 @@ class DocumentRegistry:
                 {
                     "id": doc_id,
                     "filename": meta.get("filename"),
+                    "storage_filename": meta.get("storage_filename"),
                     "upload_date": meta.get("upload_date"),
                     "total_chunks": meta.get("total_chunks"),
                     "metadata": meta
@@ -197,6 +199,7 @@ class DocumentRegistry:
                     if doc_id and doc_id not in unique_docs:
                         unique_docs[doc_id] = {
                             "filename": point.payload.get("filename") or point.payload.get("course_name"),
+                            "storage_filename": point.payload.get("storage_filename"),
                             "upload_date": point.payload.get("upload_date"),
                             "total_chunks": point.payload.get("total_chunks"),
                             "folder_path": point.payload.get("folder_path"),

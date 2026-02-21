@@ -4,7 +4,7 @@
 # File:         FastAPI application and API endpoints
 # =======================================================================
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, BackgroundTasks, Header
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, BackgroundTasks, Header, Query
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -26,7 +26,7 @@ from slowapi.errors import RateLimitExceeded
 # Import backend modules
 from config import settings
 from constants import FILTER_ALL, FOLDER_NULL, FOLDER_UNSORTED
-from ingestion import ingestion_service
+from ingestion import ingestion_service, sanitize_filename, generate_storage_filename
 from embedding_service import embedding_service
 from vector_db import vector_db
 from document_registry import document_registry
@@ -256,16 +256,20 @@ async def delete_document(filename: str):
     """
     logger.info(f"Deleting document: {filename}")
     try:
-        # 1. Delete physical file if it exists
-        file_path = os.path.join(settings.UPLOAD_DIR, filename)
-        if os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-                logger.info(f"Deleted physical file: {file_path}")
-            except Exception as e:
-                logger.warning(f"Failed to delete physical file {file_path}: {e}")
-        else:
-            logger.warning(f"Physical file not found: {file_path}")
+        # 1. Delete physical files (all docs sharing this display filename)
+        storage_filenames = await vector_db.get_storage_filenames_by_filename(filename)
+        if not storage_filenames:
+            # Backwards compatibility for legacy data
+            storage_filenames = [filename]
+
+        for storage_filename in set(storage_filenames):
+            file_path = os.path.join(settings.UPLOAD_DIR, storage_filename)
+            if os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                    logger.info(f"Deleted physical file: {file_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete physical file {file_path}: {e}")
 
         # 2. Delete vectors from Qdrant
         await vector_db.delete_document("filename", filename)
@@ -328,11 +332,21 @@ async def upload_file(
     
     # Move file to the target folder
     if target_folder_id:
-        await fs_db.move_file_to_folder(result["document_id"], result["filename"], target_folder_id)
+        await fs_db.move_file_to_folder(
+            result["document_id"],
+            result["filename"],
+            target_folder_id,
+            result.get("storage_filename")
+        )
         logger.info(f"Moved {result['filename']} to folder {target_folder_id}")
     elif relative_path is not None:
         # relative_path was provided but empty, move to Root
-        await fs_db.move_file_to_folder(result["document_id"], result["filename"], None)
+        await fs_db.move_file_to_folder(
+            result["document_id"],
+            result["filename"],
+            None,
+            result.get("storage_filename")
+        )
     # else: file remains unsorted (default behavior)
     
     # Invalidate 3D cache since new data added
@@ -410,6 +424,7 @@ async def upload_folder_batch(
             
             file_results.append({
                 "filename": result['filename'],
+                "storage_filename": result.get("storage_filename"),
                 "chunks_count": result['chunks_count'],
                 "document_id": document_id,
                 "status": "success"
@@ -458,6 +473,7 @@ async def upload_folder_batch(
         for result in file_results:
             document_registry.register(result["document_id"], {
                 "filename": result["filename"],
+                "storage_filename": result.get("storage_filename"),
                 "total_chunks": result["chunks_count"]
             })
         
@@ -468,10 +484,20 @@ async def upload_folder_batch(
     # OPTIMIZATION 5: Move all files to folder using same folder_id
     for result in file_results:
         if target_folder_id:
-            await fs_db.move_file_to_folder(result["document_id"], result["filename"], target_folder_id)
+            await fs_db.move_file_to_folder(
+                result["document_id"],
+                result["filename"],
+                target_folder_id,
+                result.get("storage_filename")
+            )
         elif relative_path is not None:
              # relative_path provided but empty -> root
-             await fs_db.move_file_to_folder(result["document_id"], result["filename"], None)
+             await fs_db.move_file_to_folder(
+                 result["document_id"],
+                 result["filename"],
+                 None,
+                 result.get("storage_filename")
+             )
     
     # Return summary
     
@@ -554,7 +580,22 @@ async def delete_folder(folder_id: str):
 async def move_file(request: FileMoveRequest):
     """Move a file to a folder (or None for unsorted)."""
     try:
-        await fs_db.move_file_to_folder(request.document_id, request.filename, request.folder_id)
+        storage_filename = None
+        existing_mapping = await fs_db.get_file_mapping_by_document_id(request.document_id)
+        if existing_mapping:
+            storage_filename = existing_mapping.get("storage_filename")
+
+        if not storage_filename:
+            payload = await vector_db.get_document_payload(request.document_id)
+            if payload:
+                storage_filename = payload.get("storage_filename")
+
+        await fs_db.move_file_to_folder(
+            request.document_id,
+            request.filename,
+            request.folder_id,
+            storage_filename
+        )
         return {"status": "success", "document_id": request.document_id, "filename": request.filename, "folder_id": request.folder_id}
     except Exception as e:
         logger.error(f"Failed to move file: {e}")
@@ -587,14 +628,41 @@ async def get_files_in_folders():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/files/content/{filename}")
-async def get_file_content(filename: str):
+async def get_file_content(filename: str, document_id: Optional[str] = Query(default=None)):
     """Get the content of a file."""
     try:
-        file_path = os.path.join(settings.UPLOAD_DIR, filename)
-        if not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail="File not found")
-            
-        return FileResponse(file_path)
+        candidate_names = []
+
+        if document_id:
+            mapping = await fs_db.get_file_mapping_by_document_id(document_id)
+            if mapping and mapping.get("storage_filename"):
+                candidate_names.append(mapping["storage_filename"])
+
+            payload = await vector_db.get_document_payload(document_id)
+            if payload:
+                storage_filename = payload.get("storage_filename")
+                if storage_filename:
+                    candidate_names.append(storage_filename)
+                payload_filename = payload.get("filename")
+                if payload_filename:
+                    candidate_names.append(payload_filename)
+        else:
+            mappings = await fs_db.get_file_mappings_by_filename(filename)
+            candidate_names.extend(
+                [m.get("storage_filename") for m in mappings if m.get("storage_filename")]
+            )
+
+        # Legacy fallback
+        candidate_names.append(filename)
+
+        for candidate in dict.fromkeys(candidate_names):
+            file_path = os.path.join(settings.UPLOAD_DIR, candidate)
+            if os.path.exists(file_path):
+                return FileResponse(file_path)
+
+        raise HTTPException(status_code=404, detail="File not found")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get file content: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -951,39 +1019,54 @@ async def export_data():
             get_path(folder['id'])
             
         # 2. Get file mappings
-        files_map = await fs_db.get_files_in_folders() # folder_id -> [filenames]
-        
-        # Invert map for easier lookup: filename -> folder_id
+        files_map = await fs_db.get_files_in_folders() # folder_id -> [{document_id, filename, storage_filename}]
+
+        # Invert maps for easier lookup by physical storage filename
         file_to_folder = {}
-        for folder_id, filenames in files_map.items():
-            for fname in filenames:
-                file_to_folder[fname] = folder_id
+        storage_to_display = {}
+        for folder_id, file_entries in files_map.items():
+            for file_entry in file_entries:
+                storage_key = file_entry.get("storage_filename") or file_entry.get("filename")
+                display_name = file_entry.get("filename")
+                if not storage_key:
+                    continue
+                file_to_folder[storage_key] = folder_id
+                if display_name:
+                    storage_to_display[storage_key] = display_name
 
         # 3. Create ZIP in memory
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
             # Iterate through all files in uploads dir
             if os.path.exists(settings.UPLOAD_DIR):
-                for filename in os.listdir(settings.UPLOAD_DIR):
-                    file_path = os.path.join(settings.UPLOAD_DIR, filename)
+                for storage_filename in os.listdir(settings.UPLOAD_DIR):
+                    file_path = os.path.join(settings.UPLOAD_DIR, storage_filename)
                     if os.path.isfile(file_path):
+                        display_filename = storage_to_display.get(storage_filename)
+                        if not display_filename:
+                            # Heuristic fallback for new storage name format: <uuid>__<filename>
+                            if "__" in storage_filename:
+                                display_filename = storage_filename.split("__", 1)[1]
+                            else:
+                                display_filename = storage_filename
+
                         # Determine archive name (path inside zip)
-                        folder_id = file_to_folder.get(filename)
+                        folder_id = file_to_folder.get(storage_filename)
                         
                         if folder_id and folder_id != FOLDER_NULL:
                             # File is in a folder
                             folder_path = folder_map.get(folder_id)
                             if folder_path:
-                                arcname = f"{folder_path}/{filename}"
+                                arcname = f"{folder_path}/{display_filename}"
                             else:
                                 # Fallback if folder not found
-                                arcname = f"{FOLDER_UNSORTED}/{filename}"
+                                arcname = f"{FOLDER_UNSORTED}/{display_filename}"
                         elif folder_id == FOLDER_NULL:
                             # File is at root
-                            arcname = filename
+                            arcname = display_filename
                         else:
                             # File is unsorted
-                            arcname = f"unsorted/{filename}"
+                            arcname = f"unsorted/{display_filename}"
                             
                         zip_file.write(file_path, arcname)
 
@@ -1034,9 +1117,10 @@ async def mcp_create_document(request: MCPDocumentRequest):
     """
     from chunker import chunker
     
-    filename = request.filename.strip()
+    filename = sanitize_filename(request.filename.strip())
     content = request.content
     folder_id = request.folder_id
+    storage_filename = generate_storage_filename(filename)
     
     # Validation: filename extension
     ext = os.path.splitext(filename)[1].lower()
@@ -1076,13 +1160,14 @@ async def mcp_create_document(request: MCPDocumentRequest):
         upload_timestamp = time.time()  # Unix timestamp (float)
         
         # Write physical file to uploads directory
-        file_path = os.path.join(settings.UPLOAD_DIR, filename)
+        file_path = os.path.join(settings.UPLOAD_DIR, storage_filename)
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(content)
         
         # Prepare metadata
         metadata = {
             "filename": filename,
+            "storage_filename": storage_filename,
             "document_id": document_id,
             "source": "mcp",  # Mark as MCP-created
             "upload_date": upload_timestamp,
@@ -1107,6 +1192,7 @@ async def mcp_create_document(request: MCPDocumentRequest):
             payload = {
                 "text": chunk['text'],
                 "filename": filename,
+                "storage_filename": storage_filename,
                 "document_id": document_id,
                 "chunk_index": i,
                 "total_chunks": len(chunks),
@@ -1125,6 +1211,7 @@ async def mcp_create_document(request: MCPDocumentRequest):
         # Register in document registry
         document_registry.register(document_id, {
             "filename": filename,
+            "storage_filename": storage_filename,
             "upload_date": metadata["upload_date"],
             "total_chunks": len(chunks),
             "source": "mcp",
@@ -1132,7 +1219,12 @@ async def mcp_create_document(request: MCPDocumentRequest):
         
         # Assign to folder if specified
         if folder_id:
-            await fs_db.move_file_to_folder(document_id, filename, folder_id)
+            await fs_db.move_file_to_folder(
+                document_id,
+                filename,
+                folder_id,
+                storage_filename
+            )
         
         # Invalidate 3D cache since we added new data
         invalidate_3d_cache()

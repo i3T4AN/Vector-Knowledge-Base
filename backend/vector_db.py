@@ -284,6 +284,77 @@ class VectorDBClient:
             logger.error(f"Failed to fetch vectors by IDs: {e}")
             return []
 
+    async def get_document_payload(self, document_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get one payload for a document ID.
+        Useful when filesystem mapping is unavailable (e.g., unsorted files).
+        """
+        try:
+            points, _ = await self.client.scroll(
+                collection_name=self.collection_name,
+                limit=1,
+                with_payload=True,
+                with_vectors=False,
+                scroll_filter=models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="document_id",
+                            match=models.MatchValue(value=document_id)
+                        )
+                    ]
+                )
+            )
+            if points:
+                return points[0].payload or {}
+            return None
+        except Exception as e:
+            logger.error(f"Failed to fetch payload for document_id {document_id}: {e}")
+            return None
+
+    async def get_storage_filenames_by_filename(self, filename: str) -> List[str]:
+        """
+        Find all storage filenames associated with a display filename.
+        """
+        try:
+            storage_filenames = set()
+            offset = None
+            limit = 100
+
+            while True:
+                points, next_offset = await self.client.scroll(
+                    collection_name=self.collection_name,
+                    limit=limit,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False,
+                    scroll_filter=models.Filter(
+                        must=[
+                            models.FieldCondition(
+                                key="filename",
+                                match=models.MatchValue(value=filename)
+                            )
+                        ]
+                    )
+                )
+
+                for point in points:
+                    payload = point.payload or {}
+                    storage_filename = payload.get("storage_filename")
+                    legacy_filename = payload.get("filename")
+                    if storage_filename:
+                        storage_filenames.add(storage_filename)
+                    elif legacy_filename:
+                        storage_filenames.add(legacy_filename)
+
+                offset = next_offset
+                if offset is None:
+                    break
+
+            return list(storage_filenames)
+        except Exception as e:
+            logger.error(f"Failed to fetch storage filenames for {filename}: {e}")
+            return []
+
     async def set_payload(self, points: List[str], payload: Dict[str, Any]):
         """Set payload for specific points (used for clustering)"""
         try:
