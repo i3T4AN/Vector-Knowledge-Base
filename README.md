@@ -2,6 +2,10 @@
 
 *A personal semantic search engine for your documents and knowledge base*
 
+Zenodo: https://zenodo.org/records/18831091
+
+DOI: https://doi.org/10.5281/zenodo.18831090
+
 [![Python](https://img.shields.io/badge/Python-3.11+-blue?style=flat-square)](https://www.python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688?style=flat-square)](https://fastapi.tiangolo.com)
 [![Qdrant](https://img.shields.io/badge/Qdrant-Vector_Database-DC244C?style=flat-square)](https://qdrant.tech)
